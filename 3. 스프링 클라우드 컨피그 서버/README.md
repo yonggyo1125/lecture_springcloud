@@ -23,6 +23,8 @@
 
 ## 구성 관리 아키텍처
 
+![image1](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/1.png)
+
 
 
 

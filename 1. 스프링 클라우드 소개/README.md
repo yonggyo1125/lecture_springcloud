@@ -32,7 +32,7 @@
 
 - 마이크로서비스를 고려할 떄 이해해야 할 핵심 개념은 분해(decomposing)과 분리(unbunding)다. 애플리케이션의 기능은 완전히 상호 독립적이어야 한다. 앞서 언급한 CRM 애플리케이션을 마이크로서비스로 분해하면 다음과 같을 것이다.
 
-![image1](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/1.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%86%8C%EA%B0%9C/images/2.png)
+![image2](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/1.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%86%8C%EA%B0%9C/images/2.png)
 
 > 마이크로서비스를 사용하면 CRM 애플리케이션이 완전히 상호 독립적인 마이크로서비스로 분해됨으로써 각 개발 팀이 제 속도를 유지할 수 있다.
 
@@ -45,7 +45,7 @@
   
 ### 모놀리식과 마이크로서비스 아키텍처 비교
 
-![image1](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/1.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%86%8C%EA%B0%9C/images/3.png)
+![image3](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/1.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%86%8C%EA%B0%9C/images/3.png)
 
 
 ## 애플리케이션 구축 방법을 왜 바꾸어야 할까?
