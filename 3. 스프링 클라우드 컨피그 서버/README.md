@@ -244,5 +244,63 @@ spring:
 - member-service는 부팅하면 전달된 스프링 프로파일에 설정된 엔드포인트로 스프링 클라우드 컨피그 서비스와 통신한다. 그런 다음 스프링 클라우드 컨피그 서비스는 구성된 백엔드 저장소(파일 시스템, 깃, 볼트)를 사용하여 URI에 매개변수로 전달된 스프링 프로파일에 해당하는 구성 정보를 검색한다. 적절한 프로퍼티 값이 라이선싱 서비스로 다시 전달되면 스프링 부트 프레임워크는 이 값을 애플리케이션의 적절한 부분에 주입한다.
 
 
+## spring initializr에서 member-service 프로젝트 생성 
+
+![image7](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/7.png)
+
+> build.gradle 
+> 
+> spring-cloud-starter-bootstrap 추가
+
+```groovy
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.2.0'
+	id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'org.choongang'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	sourceCompatibility = '17'
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('springCloudVersion', "2023.0.0")
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.cloud:spring-cloud-starter-config'
+    implementation 'org.springframework.cloud:spring-cloud-starter-bootstrap'
+    compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+```
 
 # 중요한 구성정보 보호 
