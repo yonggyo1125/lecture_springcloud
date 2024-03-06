@@ -303,4 +303,50 @@ tasks.named('test') {
 
 ```
 
+## 스프링 클라우드 컨피그 사용을 위한 라이선싱 서비스 구성
+
+- 그래들 의존성을 정의했다면 라이선싱 서비스에 스프링 클라우드 컨피그 서버 위치를 알려 주어야 한다. 스프링 클라우드 컨피그를 사용하는 스프링 부트 서비스는 bootstrap.yml, bootstrap.properties, application.yml, application.properties 파일 중 한곳에서 구성 정보를 설정할 수 있다.
+
+- 앞서 언급했듯이 bootstrap.yml 파일은 다른 구성 정보보다 먼저 애플리케이션 프로퍼티를 읽는다. 일반적으로 bootstrap.yml 파일에 서비스에 대한 애플리케이션 이름, 애플리케이션 프로파일, 구성 서버에 연결할 URI를 넣는다. 스프링 클라우드 컨피그 서버에 저장되지 않고 로컬에 유지하려는 서비스의 다른 구성 정보는 로컬의 application.yml 파일에서 설정할 수 있다.
+
+- 앞서 언급했듯이 bootstrap.yml 파일은 다른 구성 정보보다 먼저 애플리케이션 프로퍼티를 읽는다. 일반적으로 bootstrap.yml 파일에 서비스에 대한 애플리케이션 이름, 애플리케이션 프로파일, 구성 서버에 연결할 URI를 넣는다. 스프링 클라우드 컨피그 서버에 저장되지 않고 로컬에 유지하려는 서비스의 다른 구성 정보는 로컬의 application.yml 파일에서 설정할 수 있다.
+
+- member-service가 스프링 클라우드 컨피그 서비스와 통신하게 하려면 이러한 매개변수를 member-service의 bootstrap.yml이나 docker-compose.yml 파일 또는 서비스를 시작할 때 JVM 매개변수를 사용하여 정의한다. 다음 코드는 bootstrap.yml 파일을 사용할 때 이 파일의 내용을 보여 준다.
+
+> src/resources/bootstrap.yml
+
+```yaml
+spring:
+  application:
+    name: member-service  # 이름을 지정하면 스프링 클라우드 컨피그 클라이언트는 어떤 서비스가 검색되는지 알 수 있다.
+  profiles:
+    active: dev # 서비스가 실행될 프로파일을 지정한다. 프로파일은 환경에 매핑된다.
+  cloud:
+    config:
+      uri: http://localhost:8071 # 스프링 클라우드 컨피그 서버의 위치를 지정한다.
+```
+
+- <code>spring.application.name</code>은 애플리케이션 이름(예 member-service)이며, 스프링 클라우드 컨피그 서버 내 config 디렉터리 이름과 직접적으로 매핑되어야 한다
+- <code>spring.profiles.active</code> 프로퍼티는 스프링 부트에 애플리케이션이 실행할 프로파일을 지정한다. 프로파일(profile)은 스프링 부트 애플리케이션에서 사용될 구성 데이터를 구분하는 메커니즘이다. member-service 프로파일은 클라우드 구성 환경에서 서비스가 직접 매핑될 환경을 지원한다. 예를 들어 dev 프로파일을 전달하면 컨피그 서버는 dev 프로퍼티를 사용하고, 프로파일을 설정하지 않으면 라이선싱 서비스는 default 프로파일을 사용한다.
+- <code>spring.cloud.config.uri</code>는 라이선싱 서비스가 컨피그 서버 엔드포인트를 찾을 위치다.
+
+- 프로퍼티 없이 이 명령을 실행하면 member-service 서버는 자동으로 bootstrap.yml 파일에 기정의된 엔드포인트(이 경우 http://localhost:8071)와 활성화된 프로파일(dev)을 사용하여 스프링 클라우드 컨피그 서버에 연결을 시도한다.
+
+- default 값을 재정의하고 다른 환경을 지정하려면 라이선싱 서비스 프로젝트를 JAR 파일로 컴파일한 후 D 시스템 프로퍼티 오버라이드를 사용하여 JAR를 실행하면 된다. 다음 명령줄 호출은 JVM 매개변수를 사용하여 라이선싱 서비스를 시작하는 방법을 보여 준다.
+
+```
+java -Dspring.cloud.config.uri=http://localhost:8071 \ 
+     -Dspring.profiles.active=dev \
+     -jar build/libs/member-service-0.0.1-SNAPSHOT.jar
+```
+
+- 이 예는 스프링 프로퍼티를 명령줄로 재정의하는 방법을 보여 준다. 즉, 명령줄에서 다음 두 매개변수를 재정의한다.
+
+```
+spring.cloud.config.uri 
+spring.profiles.active
+```
+
+
+
 # 중요한 구성정보 보호 
