@@ -283,6 +283,7 @@ ext {
 }
 
 dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.cloud:spring-cloud-starter-config'
@@ -349,6 +350,7 @@ spring.cloud.config.uri
 spring.profiles.active
 ```
 
+- 스프링 부트 액추에이터의 자체 검사 기능을 이용하여 모든 서비스 품질을 높일 수 있는데, http://localhost:8080/actuator/env 엔드포인트를 호출하면 실행 중인 환경 정보를 확인할 수 있다. /env 엔드포인트는 해당 서비스가 부팅하는 데 사용한 프로퍼티와 엔드포인트를 포함하여 서비스의 전체 구성 정보를 제공한다.
 
 
 # 중요한 구성정보 보호 
