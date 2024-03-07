@@ -350,7 +350,36 @@ spring.cloud.config.uri
 spring.profiles.active
 ```
 
+- 도커를 사용하면 모든 서비스 시작을 통제하는 환경별 도커 컴포즈 파일로 다양한 환경을 시뮬레이션할 수 있다. 컨테이너에 필요한 환경별 값들은 컨테이너의 환경 변수로 전달된다. 예를 들어 개발 환경에서 라이선싱 서비스를 시작하려면 docker/docker-compose.yml 파일에 다음 코드에 표시된 항목이 포함된다.
+
+> configserver 에서 <code>gradlew bootBuildImage</code>를 사용하여 docker image를 생성한다.
+> member-service에서 <code>gradlew bootBuildImage</code>를 사용하여 docker image를 생성한다.
+>
+>
+> docker/docker-compose.yml
+
+```yaml
+version: '3.8'
+services:
+  configserver:
+    image: configserver:0.0.1-SNAPSHOT
+    ports:
+      - "8071:8071"
+  memberservice:
+    image: member:0.0.1-SNAPSHOT
+    environment:  # member-service 컨테이너를 위한 환경 변수를 지정한다.
+      SPRING_PROFILE_ACTIVE: "dev" # SPRING_PROFILES_ACTIVE 환경 변수를 스프링 부트 서비스 명령줄로 전달하고 스프링 부트에 실행할 프로파일을 알려준다.
+      SPRING_CLOUD_CONFIG_URI: http://localhost:8071  # 컨피그 서비스의 엔드포인트
+```
+
+- YML 파일의 환경 항목은 두 변수 값인 SPRING_PROFILES_ACTIVE(member-service가 실행될 스프링 부트 프로파일)와 SPRING_CLOUD_CONFIG_URI(member-service에 전달되어 구성 데이터를 읽어 올 스프링 클라우드 구성 서버의 인스턴스를 정의)를 포함한다. 도커 컴포즈 파일을 설정한 후 도커 컴포즈 파일이 있는 곳에서 다음 명령만 실행하면 서비스들을 시작할 수 있다.
+
+```
+docker-compose up
+```
+
 - 스프링 부트 액추에이터의 자체 검사 기능을 이용하여 모든 서비스 품질을 높일 수 있는데, http://localhost:8080/actuator/env 엔드포인트를 호출하면 실행 중인 환경 정보를 확인할 수 있다. /env 엔드포인트는 해당 서비스가 부팅하는 데 사용한 프로퍼티와 엔드포인트를 포함하여 서비스의 전체 구성 정보를 제공한다.
+
 
 
 
