@@ -1,7 +1,4 @@
 spring:
-  datasource:
-    driverClassName: oracle.jdbc.driver.OracleDriver
-
   # JPA 설정
   jpa:
     properties:
