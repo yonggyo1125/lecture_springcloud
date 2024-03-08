@@ -1266,7 +1266,7 @@ spring:
     driverClassName: oracle.jdbc.driver.OracleDriver
     url: jdbc:oracle:thin:@localhost:1521:orcl
     username: PROJECT
-    password: {cipher}4b93b6c7060f269410654622559659db1e9049bd829a15521df43b825e6a860d
+    password: '{cipher}4b93b6c7060f269410654622559659db1e9049bd829a15521df43b825e6a860d'
 ```
 
 - 스프링 클라우드 컨피그 서버는 암호화된 프로퍼티 앞에 <code>{cipher}</code>가 필요하다. <code>{cipher}</code>는 컨피그 서버가 암호화된 값을 처리하도록 지정한다.
