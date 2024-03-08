@@ -13,6 +13,7 @@ spring:
         git: # 스프링 클라우드 컨피그에 깃을 백앤드 저장소로 사용하라고 지시한다.
           uri: https://github.com/yonggyo1125/lecture_springclound_config.git # 스프링 클라우드 컨피그에 깃 서버와 레포지토리 URL을 알린다.
           searchPaths: member-service # 스프링 클라우드 컨피그에 구성 파일을 찾는 데 사용될 깃 경로를 알린다.
+          default-label: master
 
 server:
   port: 8071

@@ -1080,7 +1080,8 @@ spring:
         git: # 스프링 클라우드 컨피그에 깃을 백앤드 저장소로 사용하라고 지시한다.
           uri: https://github.com/yonggyo1125/lecture_springclound_config.git # 스프링 클라우드 컨피그에 깃 서버와 레포지토리 URL을 알린다.
           searchPaths: member-service # 스프링 클라우드 컨피그에 구성 파일을 찾는 데 사용될 깃 경로를 알린다.
-          
+          default-label: master
+
 server:
   port: 8071
 ```
@@ -1100,6 +1101,15 @@ server:
 - **spring.cloud.config.server.git.searchPaths** 프로퍼티는 클라우드 컨피그 서버가 부팅될 때 검색될 깃 리포지터리의 상대 경로를 스프링 컨피그에 지정한다. 파일 시스템 구성 정보처럼 spring.cloud.config.server.git.searchPaths 값은 구성 서비스에서 호스팅되는 각 서비스를 쉼표(,)로 구분해서 표기한다.
 
 > 스프링 클라우드 컨피그에서 환경 저장소의 기본 구현체는 깃 백엔드다.
+
+## 볼트와 스프링 클라우드 컨피그 서비스 통합 
+
+- 사용 가능한 또 다른 백엔드 저장소로 하시코프 볼트(HashiCorp Vault)가 있다. 볼트는 시크릿(secrets)에 안전하게 접근할 수 있는 도구이며 패스워드, 인증서, API 키 등 접근을 제한하거나 제한하려는 어떤 정보로도 시크릿을 정의
+- 할 수 있다.
+
+### 볼트 설치 및 실행 
+
+
 
 
 # 중요한 구성정보 보호 
