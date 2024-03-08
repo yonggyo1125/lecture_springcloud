@@ -1104,13 +1104,169 @@ server:
 
 ## 볼트와 스프링 클라우드 컨피그 서비스 통합 
 
-- 사용 가능한 또 다른 백엔드 저장소로 하시코프 볼트(HashiCorp Vault)가 있다. 볼트는 시크릿(secrets)에 안전하게 접근할 수 있는 도구이며 패스워드, 인증서, API 키 등 접근을 제한하거나 제한하려는 어떤 정보로도 시크릿을 정의
-- 할 수 있다.
+- 사용 가능한 또 다른 백엔드 저장소로 하시코프 볼트(HashiCorp Vault)가 있다. 볼트는 시크릿(secrets)에 안전하게 접근할 수 있는 도구이며 패스워드, 인증서, API 키 등 접근을 제한하거나 제한하려는 어떤 정보로도 시크릿을 정의 할 수 있다.
 
 ### 볼트 설치 및 실행 
 
+- hashicorp/vault 도커 이미지 설치
 
+```
+docker pull hashicorp/vault
+```
 
+- 볼트 컨테이너 생성(개발 모드)
+
+```
+docker run --cap-add=IPC_LOCK -p 8200:8200 -e 'VAULT_DEV_ROOT_TOKEN_ID=myroot' -e 'VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200' hashicorp/vault
+```
+
+- docker run 명령은 다음 두 가지 매개변수를 입력받는다.
+  - **VAULT_DEV_ROOT_TOKEN_ID**: 이 매개변수는 생성된 루트 토큰(root token) ID를 설정한다. 루트 토큰은 볼트 구성을 시작하는 초기 액세스 토큰이다. 초기 생성된 토큰 ID를 주어진 값으로 설정한다.
+  - **VAULT_DEV_LISTEN_ADDRESS**: 이 매개변수는 개발 서버의 IP 주소와 포트를 설정한다. 기본값은 0.0.0.0:8200이다.
+- 서버를 실행하면 Root Token을 다음과 같이 확인할 수 있는데, 로그인할 때 필요하므로 따로 메모해 놓는다.
+
+![image9](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/9.png)
+
+## 볼트 UI
+
+- 볼트는 시크릿 생성 과정을 도와주는 통합 인터페이스를 제공한다. 이 UI를 사용하려면 http://0.0.0.0:8200/ui/vault/auth에 접속한다. 이 URL은 docker run 명령에서 VAULT_DEV_LISTEN_ADDRESS 매개변수로 설정되었다. 그림 5-10에서 볼트 UI의 로그인 페이지를 볼 수 있다.
+
+- 최초 로그인 시에는 Method에는 Token을 Token은 터미널에 노출되고 있는 Root Token을 입력합니다.
+
+![image10](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/10.png)
+
+- 다음은 시크릿 생성 단계다. 시크릿을 생성하려면 로그인한 후 대시보드의 Secrets 탭을 클릭하자. 이 예에서는 설정한 후 member-service라는 시크릿을 만들고 member.vault.property라는 프로퍼티에 choongang 값을 설정한다. 이 정보는 암호화되며 접근은 제한된다는 것을 기억하자. 이를 위해 우선 새로운 시크릿 엔진을 생성한 후 특정 시크릿을 엔진에 추가해야 한다. 
+
+- 새 엔진 생성
+
+![image11](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/11.png)
+
+- 범용 KV 선택
+
+![image12](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/12.png)
+
+![image13](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/13.png)
+
+- Path에는 스프링 애플리케이션의 이름을 입력 합니다.(예: member-service)
+
+- Create secret 버튼을 클릭
+
+![image14](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/14.png)
+
+- member.vault.property라는 프로퍼티에 choongang 값을 설정한다.
+
+![image15](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/15.png)
+
+- 볼트와 시크릿 구성을 완료했으니 볼트와 통신할 수 있는 스프링 클라우드 컨피그 서버를 구성하자. 이를 위해 컨피그 서버의 bootstrap.yml 파일에 볼트 프로파일을 추가한다.
+
+> 스프링 클라우드 컨피그 서버 : src/resources/bootstrap.yml
+
+```yaml
+spring:
+  application:
+    name: config-server
+  profiles:
+    active:
+      - vault
+    #  - native,git # 쉼표로 분리된 프로파일을 모두 매핑한다.
+
+  cloud:
+    config:
+      server:
+        vault:    # 스프링 클라우드 컨피그에 저장소로 볼트를 사용하도록 지시한다.
+          port: 8200   # 스프링 클라우드 컨피그에 볼트 포트를 지정한다.
+          host: 127.0.0.1    # 스프링 클라우드 컨피그에 볼트 호스트를 지정한다.
+          kvVersion: 2   # KV 시크릿 엔진 버전을 설정한다.
+          backend: member-service
+          profile-separator: /
+          
+  ...
+
+```
+
+- 여기에서 중요한 것은 KV 시크릿 엔진 버전이다. spring.cloud.config.server.vault.kvVersion 기본값은 1이다. 하지만 볼트 0.10.0 이상 버전을 사용한다면 버전 2 사용을 권장한다.
+
+- 이제 모두 설정했으니 HTTP 요청으로 컨피그 서버를 테스트해 보자. 여기에서는 cURL 명령이나 포스트맨 같은 REST 클라이언트를 사용할 수 있다.
+
+```
+curl -X "GET" "http://localhost:8071/member-service/default" -H "X-Config-Token: 발급받은 root 토큰(터미널에서 확인)"
+```
+
+- 모두 성공적으로 구성되었다면 다음과 같은 응답이 반환된다.
+
+```
+{"name":"member-service","profiles":["default"],"label":null,"version":null,"state":null,"propertySources":[{"name":"vault:member-service","source":{"member.vault.property":"choongang"}}]}
+```
 
 # 중요한 구성정보 보호 
 
+- 기본적으로 스프링 클라우드 컨피그 서버는 애플리케이션 구성 파일 안의 모든 프로퍼티를 평문으로 저장한다. 여기에는 데이터베이스 자격 증명 등 중요한 정보도 포함되어 있다. 중요한 자격 증명을 평문으로 소스 코드 저장소에 저장하는 것은 매우 나쁜 관행이다. 불행하게도 이 경우는 생각보다 훨씬 더 자주 발생한다.
+
+- 스프링 클라우드 컨피그는 중요한 프로퍼티를 쉽게 암호화할 수 있는 기능을 제공하며, 대칭(공유 시크릿) 및 비대칭 암호화(공개/비공개) 키 사용을 지원한다. 비대칭 암호화는 현대적이고 더 복잡한 알고리즘을 사용하기 때문에 대칭 암호화보다 더 안전하다. 하지만 컨피그 서버의 <code>bootstrap.yml</code> 파일에 한 개의 프로퍼티만 정의하면 되므로 대칭 키를 사용하는 것이 더 편리할 때가 있다.
+
+## 대칭 암호화 키 설정 
+
+- 대칭 암호화 키는 암호 생성자가 값을 암호화하고 암호 해독자가 해독하는 데 사용되는 공유 시크릿에 불과하다. 스프링 클라우드 컨피그 서버에서 대칭 암호화 키는 <code>bootstrap.yml</code> 파일에서 설정하거나 <code>ENCRYPT_KEY</code>라는 OS 환경 변수로 서비스에 전달되는 문자열이다.
+
+> 대칭 키의 길이는 12문자 이상이 되어야 하고 불규칙 문자열이 이상적이다.
+> 문자열은 노출되지 않도록 환경 변수 형태로 등록한다.
+
+
+```yaml
+spring:
+  application:
+    name: config-server
+  profiles:
+    active:
+      - native
+     # - vault
+     #  - native,git # 쉼표로 분리된 프로파일을 모두 매핑한다.
+
+ ...
+
+server:
+  port: 8071
+
+encrypt:
+  key: ${secretKey}  # 컨피그 서버는 이 환경변수로 입력되는 값을 대칭 키로 사용한다.
+```
+
+- 환경 변수 설정 
+
+![image16](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/16.png)
+
+![image17](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/17.png)
+
+![image18](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/3.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EC%BB%A8%ED%94%BC%EA%B7%B8%20%EC%84%9C%EB%B2%84/images/18.png)
+
+## 프로퍼티 암호화와 복호화
+
+- 이제 스프링 클라우드 컨피그와 함께 사용될 프로퍼티의 암호화를 시작할 준비가 되었다.
+- 데이터에 액세스하는 데 사용하는 member-service의 Oracle 데이터베이스 패스워드를 암호화한다. spring.datasource.password라는 프로터티 값은 현재 평문으로 되어 있다.
+- 스프링 클라우드 컨피그 인스턴스를 실행하면 스프링 클라우드 컨피그(프레임워크)는 ENCRYPT_KEY 환경 변수 또는 bootstrap 파일의 프로퍼티가 설정을 감지하고 /encrypt와 /decrypt 두 개의 엔드포인트를 스프링 클라우드 컨피그 서비스에 자동으로 추가한다.
+
+```
+curl -X POST http://localhost:8071/encrypt  -d "비밀번호"
+```
+
+- 생성예시
+
+```
+4b93b6c7060f269410654622559659db1e9049bd829a15521df43b825e6a860d
+```
+
+- 결괏값을 복호화하려면 /decrypt 엔드포인트에 암호화된 문자열을 전달해서 복호화한다.
+- 다음 구문(syntax)을 사용하여 라이선싱 서비스에 대한 암호화된 프로퍼티를 깃허브나 파일 시스템 기반 구성 파일에 추가할 수 있다.
+
+> 스프링 컨피그 서버 : src/resources/config/member-service-dev.yml
+
+```yaml
+spring:
+  datasource:
+    driverClassName: oracle.jdbc.driver.OracleDriver
+    url: jdbc:oracle:thin:@localhost:1521:orcl
+    username: PROJECT
+    password: {cipher}4b93b6c7060f269410654622559659db1e9049bd829a15521df43b825e6a860d
+```
+
+- 스프링 클라우드 컨피그 서버는 암호화된 프로퍼티 앞에 <code>{cipher}</code>가 필요하다. <code>{cipher}</code>는 컨피그 서버가 암호화된 값을 처리하도록 지정한다.

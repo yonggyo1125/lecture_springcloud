@@ -3,4 +3,4 @@ spring:
     driverClassName: oracle.jdbc.driver.OracleDriver
     url: jdbc:oracle:thin:@localhost:1521:orcl
     username: PROJECT
-    password: _aA123456
+    password: {cipher}4b93b6c7060f269410654622559659db1e9049bd829a15521df43b825e6a860d
