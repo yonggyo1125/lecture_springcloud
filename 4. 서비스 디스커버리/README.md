@@ -69,9 +69,163 @@
 
 - 스프링 클라우드와 넷플릭스 유레카의 서비스 디스커버리 엔진을 사용하여 서비스 디스커버리 패턴을 구현한다. 클라이언트 측 로드 밸런싱을 위해 스프링 클라우드 로드 밸런서(Spring Cloud Load Balancer)를 사용한다.
 
+![image4](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/4.png)
+> 회원 서비스 및 게시판 서비스에 클라이언트 측 캐싱과 유레카 기능을 구현하면 유레카 서버에 대한 부하를 줄이고 유레카 서버가 가용하지 못할 때도 클라이언트 안정성을 높일 수 있다.
+
+- 조직 서비스의 실제 위치는 서비스 디스커버리 레지스트리에 보관된다. 이 예에서 게시판 서비스의 두 인스턴스를 서비스 디스커버리 레지스트리에 등록한 후 클라이언트 측 로드 밸런싱을 사용하여 각 서비스 인스턴스에서 레지스트리를 검색하고 캐시한다.
+  - 1. 서비스 부트스트래핑 시점에 회원 및 게시판 서비스는 유레카 서비스에 등록한다. 이 등록 과정에서 시작하는 서비스의 서비스 ID와 해당 서비스 인스턴스의 물리적 위치 및 포트 번호를 유레카에 알려 준다.
+  - 2. 회원 서비스가 게시판 서비스를 호출할 때 스프링 클라우드 로드 밸런서를 사용하여 클라이언트 측 로드 밸런싱을 제공한다. 이 로드 밸런서는 유레카 서비스에 접속하여 서비스 위치 정보를 검색하고 로컬에 캐시한다.
+  - 3. 스프링 클라우드 로드 밸런서는 유레카 서비스를 주기적으로 핑(ping)해서 로컬 캐시의 서비스 위치를 갱신한다.
+
+- 이제 새로운 회원 서비스 인스턴스는 게시판 서비스의 로컬에서 볼 수 있고 비정상 인스턴스는 로컬 캐시에서 제거된다. 
 
 ## 스프링 유레카 서비스 구축
 
+> 스프링 클라우드 컨피그 서비스처럼 스프링 클라우드 유레카 서비스를 설정하려면 스프링 부트 프로젝트를 생성하고 애너테이션과 구성을 적용해야 한다. Spring Initializr(https://start.spring.io/)에서 프로젝트를 생성하고 시작해 보자.
+
+![image5](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/5.png)
+
+> 추가 의존성 Spring Cloud Starter Bootstrap 을 build.gradle에 다음과 같이 추가한다.
+>
+> build.gradle
+
+```groovy
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.2.0'
+	id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'org.choongang'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	sourceCompatibility = '17'
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('springCloudVersion', "2023.0.0")
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.cloud:spring-cloud-starter-config'
+	implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-server'
+	implementation 'org.springframework.cloud:spring-cloud-starter-bootstrap'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+```
+
+- 다음 단계는 앞서 생성된 스프링 컨피그 서버에서 구성을 검색하는 데 필요한 설정이며 src/main/resources/bootstrap.yml 파일에 구성한다. 또한 기본 클라이언트 측 로드 밸런서에 리본(Ribbon)을 비활성화하는 구성을 추가해야 한다. 다음 코드는 bootstrap.yml 파일의 내용을 보여 준다.
+
+> src/main/resources/bootstrap.yml
+
+```yaml
+spring:
+  application:
+    name: eureka-server  # 스프링 클라우드 컨피그 클라이언트가 찾고 있는 서비스를 일 수 있도록 유레카 서비스의 이름을 지정한다.
+  cloud:
+    config:
+      uri: http://localhost:8071  # 스프링 클라우드 컨피그 서버의 위치를 지정한다.
+  loadbalancer:   #  여전히 리본이 클라이언트 측 기본 로드 밸런서이므로 loadbalancer.ribbon.enabled를 사용하여 리본을 비활성화한다.
+    ribbon:
+      enabled: false
+```
+
+- 유레카 서버의 bootstrap.yml 파일에 스프링 컨피그 서버 정보를 추가하고 리본을 로드 밸런서에서 비활성화하면 다음 단계로 이동할 수 있다.
+- 다음 단계에서는 스프링 컨피그 서버에서 유레카 서비스를 독립형 모드(클러스터에 다른 노드들이 없는)로 실행되도록 설정하는 데 필요한 구성을 추가한다.
+- 이를 위해 스프링 컨피그 서비스의 저장소에 유레카 서버 구성 파일을 생성해야 한다. 이 저장소에는 클래스패스(classpath), 파일 시스템, 깃, 볼트(Vault)를 지정할 수 있다는 것을 기억하자. 구성 파일 이름을 이전에 유레카 서비스의 bootstrap.yml 파일에 정의된 spring.application.name 프로퍼티로 지정해야 한다. 이 예제의 목적에 따라 classpath/configserver/src/main/resources/config/eureka-server.yml 파일을 생성한다.
+
+> 스프링 클라우드 컨피그 서버 : src/main/resources/config/eureka-server.yml 
+
+```yaml
+server:
+  port: 8070   # 유레카 서버의 수신 포트를 설정한다.
+eureka:
+  instance:
+    hostname: eurekaserver   # 유레카 인스턴스의 호스트 이름을 설정한다.
+  client:
+    registerWithEureka: false   # 컨피그 서버가 유레카 서비스에 등록하지 않도록 지시한다.
+    fetchRegistry: false   # 컨피그 서버가 캐시 레지스트리 정보를 로컬에 캐시하지 않도록 지시한다.
+    serviceUrl:
+      defaultZone:   # 서비스 URL을 제공한다.
+        http://${eureka.instance.hostname}:${server.port}/eureka/
+    server:
+      waitTimeInMsWhenSyncEmpty: 30000   # 서비스가 요청을 받기 전 초기 대기 시간을 설정한다.
+```
+
+- **server.port**: 기본 포트를 설정한다.
+- **eureka.instance.hostname**: 유레카 서비스의 인스턴스 호스트 이름을 설정한다.
+- **eureka.client.registerWithEureka**: 스프링 부트로 된 유레카 애플리케이션이 시작할 때 컨피그 서버를 유레카에 등록하지 않도록 설정한다.
+- **eureka.client.fetchRegistry**: 이 값을 false로 지정하면 유레카 서비스가 시작할 때 레지스트리 정보를 로컬에 캐싱하지 않도록 설정한다. 유레카 클라이언트를 실행할 때 유레카에 등록할 스프링 부트 서비스를 위한 이 값을 변경할 수 있다.
+- **eureka.client.serviceUrl.defaultZone**: 모든 클라이언트에 대한 서비스 URL을 제공한다. URL은 eureka.instance.hostname과 server.port 프로퍼티 두 개의 조합으로 되어 있다.
+- **eureka.server.waitTimeInMsWhenSyncEmpty**: 서버가 요청을 받기 전 대기 시간을 설정한다.
+
+- 마지막 프로퍼티인 <code>eureka.server.waitTimeInMsWhenSyncEmpty</code>는 시작하기 전 대기할 시간을 밀리초로 나타낸다. 서비스를 로컬에서 테스트할 때 유레카가 등록된 서비스를 바로 알리지 않기 때문에 이 프로퍼티를 사용해야 한다. 기본적으로 모든 서비스에 등록할 기회를 주고자 유레카가 알리기 전에 5분을 기다린다. 로컬 테스트에서 이 프로퍼티를 사용하면 유레카 서비스를 시작하고 등록된 서비스를 표시하는 데 걸리는 시간을 단축하기에 유용하다.
+
+> 유레카에 등록된 서비스가 표시되는 데 최대 30초가 소요된다. 유레카는 서비스를 사용할 준비가 되었다고 알리기 전에 10초 간격으로 연속 3회 ping을 보내서 상태 정보를 확인해야 하기 때문이다. 서비스를 배포하고 테스트할 때 이 점을 고려하기 바란다.
+
+- 유레카 서비스를 위한 마지막 설정 작업은 서비스를 시작하는 데 사용되는 애플리케이션의 부트스트랩 클래스에 애너테이션을(@EnableEurekaServ) 추가하는 것이다.
+
+> src/main/java/.../EurekaServerApplication.java
+
+```java
+package org.choongang.eureka;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.eureka.server.EnableEurekaServer;
+
+@SpringBootApplication
+@EnableEurekaServer  // 스프링 서비스에서 유레카 서버를 활성화한다.
+public class EurekaServerApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(EurekaServerApplication.class, args);
+	}
+
+}
+```
+
+- 여기에서는 새로운 @EnableEurekaServer 애너테이션만 사용하여 해당 서비스에서 유레카 서비스를 활성화한다. 이제
+- 유레카 서비스를 시작한다. 시작 명령을 실행하면 등록된 서비스가 없는 유레카 서비스가 실행될 것이다. 따라서 유레카 애플리케이션 구성이 설정된 스프링 컨피그 서비스를 먼저 실행해야 한다. 컨피그 서비스를 먼저 실행하지 않으면 다음 에러가 발생한다.
+
+```
+Connect Timeout Exception on Url - http://localhost:8071. 
+Will be trying the next url if available.
+    com.sun.jersey.api.client.ClientHandlerException:
+    java.net.ConnectException: Connection refused (Connection refused)
+```
+
+## 게시판 서비스 구성
+
+
+
 ## 스프링 유레카에 서비스 등록
+
+- 회원 및 게시판 서비스가 유레카 서버에 등록할 수 있도록 구성한다. 이 작업은 서비스 클라이언트가 유레카 레지스트리에서 서비스를 검색하려고 수행한다.
+
+- 회원 및 게시판 서비스의 build.gradle에 스프링 유레카 의존성을 추가하는 것이다. 
+> src/main/resources/build.gradle 
+
+```yaml
+
+```
+
+- spring-cloud-starter-netflix-eureka-client 산출물에는 스프링 클라우드가 유레카 서비스와 상호 작용하는 데 필요한 JAR 파일들이 있다. build.gradle 파일을 설정한 후 등록하려는 서비스의 bootstrap.yml 파일에 spring.application.name을 설정했는지 확인해야 한다.
 
 ## 서비스 디스커버리를 이용한 서비스 검색
