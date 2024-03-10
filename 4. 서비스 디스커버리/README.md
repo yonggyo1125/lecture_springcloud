@@ -593,3 +593,235 @@ http://<eureka service>:8070/eureka/apps/<APPID>
 
 
 ## 서비스 디스커버리를 이용한 서비스 검색
+
+- 회원 서비스가 게시판 서비스 위치를 직접적으로 알지 못해도 게시판 서비스를 호출할 수 있는 방법을 설명한다. 회원 서비스는 유레카를 이용하여 회원 서비스의 물리적 위치를 검색한다.
+
+- 서비스 디스커버리를 위해 서비스 소비자가 <code>스프링 클라우드 로드 밸런서(Spring Cloud Load Balancer)</code>와 상호 작용할 수 있는 세 가지 다른 스프링/넷플릭스 클라이언트 라이브러리를 살펴볼 것이다. 이를 위해 로드 밸런서와 상호 작용하고자 추상화 수준이 가장 낮은 단계에서 높은 단계의 라이브러리로 이동할 것이다. 검토할 라이브러리는 다음과 같다.
+  - 스프링 Discovery Client
+  - REST 템플릿을 사용한 스프링 Discovery Client
+
+### 스프링 Discovery Client로 서비스 인스턴스 검색
+
+- 스프링 <code>Discovery Client</code>는 <code>로드 밸런서(Spring Cloud Load Balancer)</code>와 그 안에 등록된 서비스에 대해 가장 낮은 수준으로 접근할 수 있다. 즉, Discovery Client를 사용하면 스프링 클라우드 로드 밸런서 클라이언트에 등록된 모든 서비스와 해당 URL을 쿼리할 수 있다.
+- 다음으로 Discovery Client를 통해 로드 밸런서에서 게시판 서비스 URL 중 하나를 검색한 후 표준 RestTemplate 클래스를 사용하여 서비스를 호출하는 간단한 예제를 만들 것이다.
+- 디스커버리 클라이언트를 사용하려면 먼저 다음 코드처럼 디스커버리 클라이언트를 사용하려면 먼저 다음 코드처럼 <code>@EnableDiscoveryClient</code> 애너테이션을 추가해야 한다.
+
+> member-service : src/main/java/.../MemberServiceApplication.java
+
+```java
+package org.choongang.member;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
+
+@SpringBootApplication
+@RefreshScope
+@EnableDiscoveryClient  // 유레카 Discovery Client를 활성화한다.
+public class MemberServiceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(MemberServiceApplication.class, args);
+	}
+
+}
+```
+
+- <code>@EnableDiscoveryClient</code>는 스프링 클라우드에서 애플리케이션이 Discovery Client 및 스프링 클라우드 로드 밸런서 라이브러리를 사용할 수 있게 한다.
+- Discovery Client를 사용한 정보 검색하기
+
+> member-service : src/main/java/.../service/client/Board.java
+
+```java 
+package org.choongang.member.service.client;
+
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+public class Board {
+    private String bid; // 게시판 아이디
+
+    private String bName; // 게시판명
+    private boolean active; // 사용 여부
+
+    private String category; // 게시판 분류
+
+    private LocalDateTime createdAt;
+    private LocalDateTime modifiedAt;
+}
+```
+
+> member-service : src/main/java/.../service/client/BoardDiscoveryClient.java
+
+```java
+package org.choongang.member.service.client;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class BoardDiscoveryClient {
+
+    private final DiscoveryClient discoveryClient;  // Discovery Client를 클래스에 주입한다.
+    private final ObjectMapper objectMapper;
+
+    public List<Board> getBoards() {
+        RestTemplate restTemplate = new RestTemplate();
+        List<ServiceInstance> instances = discoveryClient.getInstances("board-service"); // 조직 서비스의 모든 인스턴스 리스트를 얻는다.
+
+        if (instances == null || instances.isEmpty()) {
+            return null;
+        }
+
+        String serviceUri = String.format("%s/api/v1/board", instances.get(0).getUri().toString());
+
+        ResponseEntity<String> exchange = restTemplate.exchange(
+                serviceUri,
+                HttpMethod.GET,
+                null,
+                String.class);
+
+        String json = exchange.getBody();
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {}
+        return null;
+    }
+}
+```
+
+- 코드에서 먼저 살펴볼 것은 <code>DiscoveryClient</code> 클래스다. 이 클래스를 사용하여 스프링 클라우드 로드 밸런서와 상호 작용한다. 그다음 유레카에 등록된 조직 서비스의 모든 인스턴스를 검색하려면 <code>getInstances()</code> 메서드를 사용하고, ServiceInstance 객체 리스트를 얻어 오기 위해 찾으려는 서비스 키를 전달한다. <code>ServiceInstance</code> 클래스는 호스트 이름, 포트, URI 같은 서비스의 인스턴스 정보를 보관한다.
+- 리스트에서 첫 번째 <code>ServiceInstance</code> 클래스를 사용하여 서비스를 호출하는 데 쓸 수 있는 대상 URL을 만든다. 대상 URL이 만들어지면 표준 스프링 RestTemplate으로 조직 서비스를 호출하고 데이터를 조회할 수 있다.
+
+### Discovery Client와 현실
+
+- 어떤 서비스와 서비스 인스턴스가 등록되어 있는지 확인하기 위해 로드 밸런서에 쿼리해야 할 때만 Discovery Client를 사용해야 한다. 코드에는 다음 몇 가지 문제가 있다.
+  - **스프링 클라우드 클라이언트 측 로드 밸런서를 이용하지 못한다**: Discovery Client를 직접 호출하면 서비스 리스트를 얻게 되지만, 호출할 서비스 인스턴스를 선정할 책임은 사용자에게 있다.
+  - **너무 많은 일을 한다**: 코드에서 서비스를 호출하는 데 사용될 URL을 생성해야 한다. 이것은 작은 일이지만 코드를 적게 작성하면 디버그할 코드가 줄어든다.
+
+- 눈치 빠른 스프링 개발자는 코드에서 RestTemplate 클래스를 직접 인스턴스화했다는 것을 알아챘을 것이다. 이것은 일반적인 스프링 REST 호출과 대립되는데, 보통 스프링 프레임워크는 @Autowired 애너테이션을 통해 RestTemplate을 주입하기 때문이다.
+- 코드에서 볼 수 있듯이 우리는 RestTemplate 클래스의 인스턴스를 생성했다. @EnableDiscoveryClient를 통해 애플리케이션 클래스에서 스프링 Discovery Client를 활성화했다면, 스프링 프레임워크가 관리하는 모든 REST 템플릿(template)은 해당 인스턴스에 로드 밸런서가 활성화된 인터셉터(interceptor)를 주입한다. 이렇게 되면 RestTemplate 클래스로 URL을 생성하는 방식이 변경되는데, 직접적으로 RestTemplate을 인스턴스로 만들면 이 변경을 피할 수 있다.
+
+### 로드 밸런서를 지원하는 스프링 REST 템플릿으로 서비스 호출
+
+-  로드 밸런서를 지원하는 RestTemplate 클래스를 사용하려면 스프링 클라우드의 <code>@LoadBalanced</code> 애너테이션으로 RestTemplate 빈(bean)을 정의해야 한다.
+
+> member-service : src/main/java/config/BeanConfig.java
+
+```java
+...
+@Configuration
+public class BeanConfig {
+  ...
+
+  @Bean
+  @LoadBalanced
+  public RestTemplate restTemplate() {
+    return new RestTemplate();
+  }
+}
+```
+
+- 로드 밸런서를 지원하는 RestTemplate을 사용한 서비스 호출하기
+
+> member-service : src/main/java/.../service/client/BoardDiscoveryClient.java
+
+```java
+package org.choongang.member.service.client;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class BoardDiscoveryClient {
+
+    private final DiscoveryClient discoveryClient;  // Discovery Client를 클래스에 주입한다.
+    private final ObjectMapper objectMapper;
+    private final RestTemplate restTemplate;
+
+    public List<Board> getBoards() {
+
+        ResponseEntity<String> exchange = restTemplate.exchange(  // 서비스 호출을 위해 표준 스프링 RestTemplate 클래스를 사용한다.
+                "http://board-service/api/v1/board",  // 로드 밸런서 지원 RestTemplate를 사용할 때 유레카 서비스 ID로 대상 URL을 생성한다.
+                HttpMethod.GET,
+                null,
+                String.class);
+
+        String json = exchange.getBody();
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {}
+        return null;
+    }
+}
+```
+
+- 이 코드는 이전 예제 코드와 다소 비슷하게 보이지만 두 가지 큰 차이점이 있다. 첫째, 스프링 클라우드 Discovery Client가 없어졌다. 둘째, restTemplate.exchange() 호출에 사용된 URL이 이상하게 보일 것이다.
+
+```java
+ ResponseEntity<String> exchange = restTemplate.exchange(  // 서비스 호출을 위해 표준 스프링 RestTemplate 클래스를 사용한다.
+                "http://board-service/api/v1/board",  // 로드 밸런서 지원 RestTemplate를 사용할 때 유레카 서비스 ID로 대상 URL을 생성한다.
+                HttpMethod.GET,
+                null,
+                String.class);
+```
+
+- URL에서 서버 이름은 유레카에 조직 서비스를 등록할 때 사용된 조직 서비스 키의 애플리케이션 ID와 일치한다.
+
+```
+http://board-service/api/v1/board
+```
+
+- 로드 밸런서를 지원하는 RestTemplate 클래스는 전달된 URL을 파싱하고 서버 이름으로 전달된 것을 키로 사용하여 서비스의 인스턴스를 로드 밸런서에 쿼리한다. **실제 서비스 위치와 포트는 개발자에게 완전히 추상화된다.** 게다가 RestTemplate 클래스를 사용하면 **스프링 클라우드 로드 밸런서는 서비스 인스턴스에 대한 모든 요청을 라운드 로빈 방식으로 부하 분산**한다.
+
+
+> member-service : src/main/java/.../controller/MemberController.java
+
+```java
+...
+
+@RestController
+@RequestMapping("/api/v1/member")
+@RequiredArgsConstructor
+public class MemberController {
+  ...
+
+  private final BoardDiscoveryClient boardDiscoveryClient;
+  
+  ...
+
+  @GetMapping("/board")
+  public List<Board> getBoards() {
+    return boardDiscoveryClient.getBoards();
+  }
+
+  ...
+  
+}
+```
+
+![image11](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/11.png)
