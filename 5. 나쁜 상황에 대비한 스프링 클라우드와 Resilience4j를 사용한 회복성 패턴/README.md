@@ -285,14 +285,367 @@ public class MemberInfoService implements UserDetailsService {
 
 - 이 코드는 데이터베이스가 올바르게 작동한다면 아무 일도 하지 않는다. 다음 코드에서 느리거나 타임아웃된 데이터베이스 쿼리가 수행되는 loadUserByUsername() 메서드를 시뮬레이션해 보자.
 
+> member-service: src/main/java/.../service/MemberInfoService.java
 
+```java
+....
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class MemberInfoService implements UserDetailsService {
+    
+  ...
+
+  @Override
+  @CircuitBreaker(name="memberService")  // Resilience4j 회로 차단기를 사용하여 loadUserByUsername(..) 메서드를 @CircuitBreaker로 래핑한다.
+  public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    randomlyRunLong();
+    ...
+    
+  }
+
+  private void randomlyRunLong() { // 데이터베이스 호출이 오래 실행될 가능성은 3분의 1이다.
+      Random rand = new Random();
+      int randomNum = rand.nextInt(3) + 1;
+      if (randomNum == 3) sleep();
+  }
+
+  private void sleep() {
+      try {
+          Thread.sleep(5000);  // 5000ms(5초)를 일시 정지한 후 TimeoutException 예외를 발생시킨다.
+      } catch (InterruptedException e) {
+          log.error(e.getMessage());
+      }
+  }
+}
+```
+
+> src/main/java/.../controller/MemberController.java
+
+```java
+...
+public class MemberController {
+  ...
+  private final MemberInfoService memberInfoService;
+  
+  ...
+  
+  
+  @GetMapping("/test")
+  public String memberTest() {
+    try {
+      memberInfoService.loadUserByUsername("user01@test.org");
+    } catch (Exception e) {
+      if (e instanceof UsernameNotFoundException) {
+        e.printStackTrace();
+      } else {
+        throw e;
+      }
+    }
+    return "OK";
+  }
+  
+  ...
+}
+```
+
+- ARC에서 http://localhost:8080/api/v1/member/test 엔드포인트를 여러 번 호출하면 회원 서비스에서 다음 에러 메세지를 반환한다.
+
+```json
+{
+    "timestamp": 1595178498383,
+    "status": 500,
+    "error": "Internal Server Error",
+    "message": "No message available",
+    "path": "/api/v1/member/test" 
+}
+```
+
+- 실패 중인 서비스를 계속 호출하면 결국 링 비트 버퍼가 다 차서 다음과 같은 에러가 표시된다.
+
+### 게시판 서비스에 회로 차단기 추가 
+
+- 메서드 레벨의 애너테이션으로 회로 차단기 기능을 호출에 삽입할 경우 장점은 데이터베이스를 액세스하든지 마이크로서비스를 호출하든지 간에 동일한 애너테이션을 사용할 수 있다는 것이다. 회원 서비스에서 회원과 연관된 게시판 목록을 검색해야 할 때를 예로 들어 보자. 회로 차단기로 게시판 서비스에 대한 호출을 래핑하고 싶다면, 간단하게 다음과 같이 <code>@CircuitBreaker</code>를 추가한다.
+
+
+> member-service: src/main/java/.../service/client/BoardDiscoveryClient.java
+
+```java
+...
+public class BoardDiscoveryClient {
+  ...
+  @CircuitBreaker(name="boardService")
+  public List<Board> getBoards() {
+    ...
+  }
+  ...
+}
+```
+
+> @CircuitBreaker로 구현하는 것은 쉽지만 이 애너테이션의 기본값을 사용할 때는 주의해야 한다. 항상 요구 사항에 적합한 구성을 분석하고 설정할 것을 적극 권장한다.
+
+
+### 회로 차단기 사용자 정의 
+
+- Resilience4j 회로 차단기를 사용자 정의하는 방법은 member-service 또는 board-service의  bootstrap.yml 또는 서비스 구성 파일에 몇 가지 파라미터를 추가하면 쉽게 해결할 수 있다.
+- 회로 차단기 사용자 정의하기 
+
+> member-service : src/main/resources/bootstrap.yml
+
+```yaml
+...
+
+spring:
+  application:
+    name: member-service  # 이름을 지정하면 스프링 클라우드 컨피그 클라이언트는 어떤 서비스가 검색되는지 알 수 있다.
+  profiles:
+    active: dev # 서비스가 실행될 프로파일을 지정한다. 프로파일은 환경에 매핑된다.
+  cloud:
+    config:
+      uri: http://localhost:8071 # 스프링 클라우드 컨피그 서버의 위치를 지정한다.
+
+
+resilience4j.circuitbreaker:
+  instances:
+    memberService: # 회원 서비스의 인스턴스 구성(회로 차단기 에너테이션에 전달되는 이름과 동일
+      registerHealthIndicator: true  # 상태 정보 엔드포인트에 대한 구성 정보 노출 여부를 설정한다.
+      ringBufferSizeInClosedState: 5  # 링 버퍼의 닫힌 상태 크기를 설정한다.
+      ringBufferSizeInHalfOpenState: 3  # 링 버퍼의 반 열린 상태의 크기를 설정한다.
+      waitDurationInOpenState: 10s  # 열린 상태의 대기 시간을 설정한다.
+      failureRateThreshold: 50  # 실패율 임계치를 백분율(%)로 설정한다.
+      recordException:  # 실패로 기록될 예외를 설정한다.
+        - org.springframework.web.client.HttpServerErrorException
+        - java.io.IOException
+        - java.util.concurrent.TimeoutException
+        - org.springframework.web.client.ResourceAccessException
+
+    boardService: # 게시판 서비스의 인스턴스 구성(회로 차단기 에너테이션에 전달되는 이름과 동일)
+      registerHealthIndicator: true
+      ringBufferSizeInClosedState: 6
+      ringBufferSizeInHalfOpenState: 4
+      waitDurationInOpenState: 20s
+      failureRateThreshold: 60
+
+
+```
+
+- **ringBufferSizeInClosedState**: 회로 차단기가 닫힌 상태일 때 링 비트 버퍼의 크기를 설정한다. 기본값은 100이다.
+- **ringBufferSizeInHalfOpenState**: 회로 차단기가 반열린 상태일 때 링 비트 버퍼의 크기를 설정한다. 기본값은 10이다.
+- **waitDurationInOpenState**: 열린 상태에서 반열린 상태로 변경하기 전 회로 차단기가 대기해야 할 시간을 설정한다. 기본값은 60,000ms다.
+- **failureRateThreshold**: 실패율 임계치의 백분율을 구성한다. 실패율이 임계치보다 크거나 같을 때 회로 차단기는 열린 상태로 변경되고, 단락 점검 호출(short-circuiting call)을 시작한다. 기본값은 50이다.
+- **recordExceptions**: 실패로 간주될 예외를 나열한다. 기본적으로 모든 예외는 실패로 기록된다.
+- 더 많은 구성 정보를 알고 싶다면 https://resilience4j.readme.io/docs/circuitbreaker 를 참고
 
 ## 폴백 처리
 
+- 회로 차단기 패턴의 장점 중 하나는 이 패턴이 ‘중개자’로, 원격 자원과 그 소비자 사이에 위치하기 때문에 서비스 실패를 가로채서 다른 대안을 취할 수 있다는 것이다.
+- Resilience4j에서 이 대안을 <code>폴백 전략(fallback strategy)</code>이라고 하며 쉽게 구현할 수 있다.
+
+> member-service: src/main/java/.../service/client/BoardDiscoveryClient.java
+
+```java 
+package org.choongang.member.service.client;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.List;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class BoardDiscoveryClient {
+
+    private final DiscoveryClient discoveryClient;  // Discovery Client를 클래스에 주입한다.
+    private final ObjectMapper objectMapper;
+    private final RestTemplate restTemplate;
+
+    @CircuitBreaker(name="boardService", fallbackMethod = "getBoardFailure")
+    public List<Board> getBoards() {
+        try {
+            Thread.sleep(10000);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        ResponseEntity<String> exchange = restTemplate.exchange(  // 서비스 호출을 위해 표준 스프링 RestTemplate 클래스를 사용한다.
+                "http://board-service/api/v1/board", // 로드 밸런서 지원 RestTemplate를 사용할 때 유레카 서비스 ID로 대상 URL을 생성한다.
+                HttpMethod.GET,
+                null,
+                String.class);
+
+        String json = exchange.getBody();
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {}
+        return null;
+    }
+
+    public List<Board> getBoardFailure(Throwable t) {
+        log.error("fallback 메서드 실행!!: {}", t.getMessage());
+        return null;
+    }
+}
+```
+
+- Resilience4j로 폴백 전략을 구현하려면 두 가지 작업이 필요하다. 
+  - 첫 번째 필요한 작업은 <code>@CircuitBreaker</code> 또는 다른 애너테이션에 <code>fallbackMethod</code> 속성을 추가하는 것이다. 이 속성은 실패해서 Resilience4j가 호출을 중단할 때 대신 호출할 메서드 이름을 포함해야 한다.
+  - 두 번째 필요한 작업은 폴백 메서드를 정의하는 것이다. 이 메서드는 @CircuitBreaker가 보호하는 원래 메서드와 동일한 클래스에 위치해야 한다. 폴백 메서드를 생성하려면 원래 메서드에 동일한 매개변수를 받도록 동일한 서식을 가져야 한다. 동일한 서식을 사용해야 원래 메서드의 모든 매개변수를 폴백 메서드에 전달할 수 있다. 
+
+### 폴백 전략
+- 다음은 폴백 전략의 구현 여부를 결정할 때 몇 가지 염두에 두어야 할 사항이다.
+  - 폴백은 자원이 타임아웃되거나 실패했을 때 동작 가이드를 제공한다. 타임아웃 예외를 포착하는 데 폴백을 사용하고 에러를 기록하는 것에 아무것도 하지 않는다면 서비스 호출 주위에 표준 try ... catch 블록을 사용해야 한다. 즉, 예외를 잡고 로깅 로직을 try ... catch 블록에 추가한다.
+  - 폴백 함수에서 수행할 동작에 유의하기 바란다. 폴백 서비스에서 다른 분산 서비스를 호출하는 경우 @CircuitBreaker로 그 폴백을 또 래핑해야 할 수 있다. 1차 폴백이 발생한 것과 동일한 실패가 2차 폴백에서도 발생할 수 있음을 고려하라. 방어적으로 코딩해야 한다.
+
 ## 벌크헤드 패턴 구현
+
+- 마이크로서비스 기반 애플리케이션에서 특정 작업을 완료하기 위해 여러 마이크로서비스를 호출해야 할 경우가 많다. 벌크헤드 패턴을 사용하지 않는다면 이러한 호출의 기본 동작은 전체 자바 컨테이너에 대한 요청을 처리하려고 예약된 동일한 스레드를 사용해서 실행한다. 대규모 요청이라면 하나의 서비스에 대한 성능 문제로 자바 컨테이너의 모든 스레드가 최대치에 도달하고, 작업이 처리되길 기다리는 동안 새로운 작업 요청들은 후순위로 대기한다. 결국 자바 컨테이너는 멈추게 된다.
+
+- 벌크헤드 패턴은 원격 자원 호출을 자체 스레드 풀에 격리해서 한 서비스의 오작동을 억제하고 컨테이너를 멈추지 않게 한다. Resilience4j는 벌크헤드 패턴을 위해 두 가지 다른 구현을 제공한다. 이 구현 타입에 따라 동시 실행 수를 제한할 수 있다.
+  - **세마포어 벌크헤드(semaphore bulkhead)**: 세마포어 격리 방식으로 서비스에 대한 **동시 요청 수를 제한**한다. 한계에 도달하면 요청을 거부한다.  
+  - **스레드 풀 벌크헤더(thread pool bulkhead)**: 제한된 큐와 고정 스레드 풀을 사용한다. 이 방식은 **풀과 큐가 다 찬 경우만 요청을 거부**한다.  
+
+- Resilience4j는 기본적으로 세마포어 벌크헤드 타입을 사용한다.
+- 이 모델은 애플리케이션에서 액세스하는 원격 자원의 수가 적고 각 서비스에 대한 호출량이 상대적으로 고르게 분산되어 있는 경우 잘 작동한다. 문제는 다른 서비스보다 호출량이 훨씬 많거나 완료하는 데 오래 걸리는 서비스가 있다면, 한 서비스가 기본 스레드 풀의 모든 스레드를 점유하기 때문에 모든 스레드를 소진하게 된다.
+
+![image6](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/5.%20%EB%82%98%EC%81%9C%20%EC%83%81%ED%99%A9%EC%97%90%20%EB%8C%80%EB%B9%84%ED%95%9C%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%EC%99%80%20Resilience4j%EB%A5%BC%20%EC%82%AC%EC%9A%A9%ED%95%9C%20%ED%9A%8C%EB%B3%B5%EC%84%B1%20%ED%8C%A8%ED%84%B4/images/6.png)
+> 기본 Resilience4j 벌크헤드 타입은 세마포어 방식이다.
+
+- 다행히 Resilience4j는 서로 다른 원격 자원 호출 간 벌크헤드를 만들고자 사용하기 쉬운 메커니즘을 제공한다. 다음 그림은 관리 자원이 각 벌크헤드로 분리되었을 때를 잘 보여 준다.
+
+![image7](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/5.%20%EB%82%98%EC%81%9C%20%EC%83%81%ED%99%A9%EC%97%90%20%EB%8C%80%EB%B9%84%ED%95%9C%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%EC%99%80%20Resilience4j%EB%A5%BC%20%EC%82%AC%EC%9A%A9%ED%95%9C%20%ED%9A%8C%EB%B3%B5%EC%84%B1%20%ED%8C%A8%ED%84%B4/images/7.png)
+
+- Resilience4j에서 벌크헤드 패턴을 구현하려면 @CircuitBreaker와 이 패턴을 결합하는 구성을 추가해야 한다. 이 작업을 수행하는 몇 가지 코드를 살펴보자.
+  - loadUserByUsername(..) 호출을 위한 별도 스레드 풀 설정
+  -  bootstrap.yml 파일에 벌크헤드 구성 정보 생성
+  - 세마포어 방식에서 maxConcurrentCalls와 maxWaitDuration 프로퍼티 설정
+  - 스레드 풀 방식에서 maxThreadPoolSize, coreThreadPoolSize, queueCapacity, keepAliveDuration 설정  
+
+> member-service: src/main/resources/bootstrap.yml
+
+```yaml
+...
+
+resilience4j.bulkhead:
+  instances:
+    bulkheadMemberService:
+      maxWaitDuration: 10ms  # 스레드를 차단할 최대 시간
+      maxConcurrentCalls: 20  # 최대 동시 호출 수
+
+resilience4j.thread-pool-bulkhead:
+  instances:
+    bulkheadMemberService:
+      maxThreadPoolSize: 1  # 스레드 풀에서 최대 스레드 수 
+      coreThreadPoolSize: 1 # 코어 스레드 풀 크기
+      queueCapacity: 1   # 큐 용량 
+      keepAliveDuration: 20ms   # 유휴 스레드가 종료되기 전 새 태스크를 기다리는 최대 시간
+```
+
+- Resilience4j를 사용하면 애플리케이션 프로퍼티를 통해 벌크헤드의 동작을 맞춤 설정할 수 있다. 회로 차단기와 마찬가지로 인스턴스를 원하는 만큼 생성할 수 있으며, 각 인스턴스에 서로 다른 구성을 설정할 수 있다.
+  - **maxWaitDuration**: 벌크헤드에 들어갈 때 스레드를 차단할 최대 시간을 설정한다. 기본값은 0이다.
+  - **maxConcurrentCalls**: 벌크헤드에서 허용되는 최대 동시 호출 수를 설정한다. 기본값은 25다.
+  - **maxThreadPoolSize**: 최대 스레드 풀 크기를 설정한다. 기본값은 Runtime.getRuntime().availableProcessors()다.
+  - **coreThreadPoolSize**: 코어 스레드 풀 크기를 설정한다. 기본값은 Runtime.getRuntime().availableProcessors()다.
+  - **queueCapacity**: 큐 용량을 설정한다. 기본값은 100이다.
+  - **keepAliveDuration**: 유휴 스레드가 종료되기 전에 새 작업을 기다리는 최대 시간을 설정한다. 이 시간은 스레드 수가 코어 스레드 수보다 많을 때 발생한다. 기본값은 20ms다.
+
+- 사용자에게 맞는 스레드 풀의 적절한 크기는 얼마일까? 이 질문에 답하는 데 다음 공식을 사용할 수 있다.
+
+```
+(서비스가 정상일 때 최고점(peak)에서 초당 요청 수×99 백분위수(P99) 지연 시간(단위: 초)) + 부하를 대비해서 약간의 추가 스레드
+```
+
+- 서비스가 부하를 받는 상황에서 동작하기 전까지 서비스의 성능 특성을 알지 못할 경우가 많다. 스레드 풀 프로퍼티를 조정해야 하는 주요 지표는 대상이 되는 원격 자원이 정상인 상황에서도 서비스 호출이 타임아웃을 겪고 있을 때다. 다음 코드는 벌크헤드를 설정하는 방법을 보여 준다.
+
+> member-service: src/main/java/.../service/MemberInfoService.java
+
+```java
+...
+public class MemberInfoService implements UserDetailsService {
+  ...
+
+    @CircuitBreaker(name = "memberService", fallbackMethod = "fallbackLoadUserByUserName")
+    // Resilience4j 회로 차단기를 사용하여 loadUserByUsername(..) 메서드를 @CircuitBreaker로 래핑한다.
+    @Bulkhead(name = "bulkheadMemberService", fallbackMethod = "fallbackLoadUserByUserName")
+    // 벌크헤드 패턴을 위한 인스턴스 이름과 폴백 메서드를 설정한다.
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        randomlyRunLong();
+    ...
+    }
+
+    public UserDetails fallbackLoadUserByUserName(String username, Throwable t) throws UsernameNotFoundException {
+        return MemberInfo.builder().build();
+    }
+  
+  ...
+}
+```
+
+- 가장 먼저 주목할 점은 <code>@Bulkhead</code>라는 새로운 애너테이션이며, 이 애너테이션은 벌크헤드 패턴을 설정하고 있다는 것을 나타낸다. 애플리케이션 프로퍼티에 다른 값을 더 설정하지 않는다면 Resilience4j는 앞서 언급한 <code>세마포어 벌크헤드 타입</code>에 대한 기본값들을 사용한다.
+
+- 두 번째 주목할 점은 벌크헤드 타입을 별도로 설정하지 않았다는 것이다. 이 경우 벌크헤드 패턴은 세마포어 방식을 사용하며, 스레드 풀 방식으로 변경하려면 다음과 같이 @Bulkhead 애너테이션을 추가해야 한다.
+
+```java
+@Bulkhead(name="bulkheadMemberService", type=Bulkhead.Type.THREADPOOL, fallbackMethod = "fallbackLoadUserByUserName")
+```
 
 ## 재시도 패턴 구현
 
+- 이름에서 알 수 있듯이, 재시도 패턴(retry pattern)은 서비스가 처음 실패했을 때 서비스와 통신을 재시도하는 역할을 한다. 이 패턴의 핵심 개념은 고장(예:  네트워크 장애)이 나도 동일한 서비스를 한 번 이상 호출해서 기대한 응답을 얻을 수 있는 방법을 제공하는 것이다. 이 패턴의 경우 해당 서비스 인스턴스에 대한 재시도 횟수와 재시도 사이에 전달하려는 간격을 지정해야 한다.
+
+- 회로 차단기와 마찬가지로 Resilience4j를 사용하면 재시도하고 싶지 않은 예외를 지정할 수 있다. 다음 코드는 재시도 구성 매개변수가 포함된 회원 서비스의 bootstrap.yml 파일을 보여 준다.
+
+> member-service: src/main/resources/bootstrap.yml
+
+```yaml
+...
+resilience4j.retry:
+  instances:
+    retryMemberService:
+      maxRetryAttempts: 5  # 재시도 최대 횟수
+      waitDuration: 10000  # 재시도 간 대기 시간
+      retry-exceptions:  # 재시도 대상이 되는 예외(exception) 목록
+        - java.util.concurrent.TimeoutException
+```
+
+- **maxRetryAttempts**: 서비스에 대한 재시도 최대 횟수를 정의한다. 이 매개변수의 기본값은 3이
+- **waitDuration**: 재시도 사이의 대기 시간을 정의하고 기본값은 500ms다.
+- **retry-exceptions**: 재시도할 예외 클래스 목록을 설정하고 기본값은 없다(empty).
+- **intervalFunction**: 실패 후 대기 시간 간격을 수정하는 함수를 설정한다.
+- **retryOnResultPredicate**: 결과에 따라 재시도 여부를 판별하도록 설정한다. 재시도하려면 true를 반환해야 한다.
+- **retryOnExceptionPredicate**: 예외에 따라 재시도 여부를 판별하도록 설정한다. retryOnResultPredicate과 마찬가지로 true를 반환하면 재시도한다.
+- **ignoreExceptions**: 무시해서 재시도하지 않는 에러 클래스 리스트를 설정한다. 기본값은 없다(empty).
+
+- 다음 코드는 재시도 패턴을 설정하는 방법을 보여 준다.
+
+> member-serivce: src/main/java/.../service/MemberInfoService.java
+
+```java
+...
+public class MemberInfoService implements UserDetailsService {
+  ...
+  @Override
+  @Retry(name="retryMemberService", fallbackMethod = "fallbackLoadUserByUserName")  // 재시도 패턴을 위해 인스턴스 이름과 폴백 메서드를 설정한다.
+  @CircuitBreaker(name="memberService", fallbackMethod = "fallbackLoadUserByUserName")  // Resilience4j 회로 차단기를 사용하여 loadUserByUsername(..) 메서드를 @CircuitBreaker로 래핑한다.
+  @Bulkhead(name="bulkheadMemberService", fallbackMethod = "fallbackLoadUserByUserName") // 벌크헤드 패턴을 위한 인스턴스 이름과 폴백 메서드를 설정한다.
+  public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    ...    
+  }
+  
+  ...
+}
+```
+
 ## 속도 제한기 패턴 구현
 
-## ThreadLocal과 Resilience4J 
+- 재시도 패턴은 주어진 시간 내 소비할 수 있는 양보다 더 많은 호출로 발생하는 서비스 과부하를 막는다. 이 패턴은 고가용성과 안정성을 위한 API를 준비하는 데 필수 기술이다.
+- Resilience4j는 속도 제한기 패턴을 위해 AtomicRateLimiter와 SemaphoreBasedRateLimiter라는 두 가지 구현체를 제공한다. RateLimiter의 기본 구현체는 AtomicRateLimiter다.

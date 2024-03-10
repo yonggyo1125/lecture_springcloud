@@ -5,10 +5,12 @@ import lombok.RequiredArgsConstructor;
 import org.choongang.member.common.exceptions.BadRequestException;
 import org.choongang.member.service.JoinService;
 import org.choongang.member.service.JoinValidator;
+import org.choongang.member.service.MemberInfoService;
 import org.choongang.member.service.client.Board;
 import org.choongang.member.service.client.BoardDiscoveryClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.validation.Errors;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +24,7 @@ public class MemberController {
     private final JoinService joinService;
     private final JoinValidator joinValidator;
     private final BoardDiscoveryClient boardDiscoveryClient;
+    private final MemberInfoService memberInfoService;
 
     /**
      * 회원 가입 처리
@@ -43,6 +46,20 @@ public class MemberController {
     @GetMapping("/board")
     public List<Board> getBoards() {
         return boardDiscoveryClient.getBoards();
+    }
+
+    @GetMapping("/test")
+    public String memberTest() {
+        try {
+            memberInfoService.loadUserByUsername("user01@test.org");
+        } catch (Exception e) {
+            if (e instanceof UsernameNotFoundException) {
+                e.printStackTrace();
+            } else {
+                throw e;
+            }
+        }
+        return "OK";
     }
 
     private void errorProcess(Errors errors) {
