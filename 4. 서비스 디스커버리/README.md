@@ -217,6 +217,233 @@ Will be trying the next url if available.
 
 ![image6](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/6.png)
 
+> build.gradle에 다음 의존성을 및 queryDSL 설정을 추가한다.
+> implementation 'org.springframework.cloud:spring-cloud-starter-bootstrap'
+> implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
+> annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
+> annotationProcessor 'jakarta.persistence:jakarta.persistence-api:3.1.0'
+> annotationProcessor 'jakarta.annotation:jakarta.annotation-api:2.1.1'
+
+```groovy
+plugins {
+  id 'java'
+  id 'org.springframework.boot' version '3.2.3'
+  id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'org.choongang'
+version = '0.0.1-SNAPSHOT'
+
+java {
+  sourceCompatibility = '17'
+}
+
+configurations {
+  compileOnly {
+    extendsFrom annotationProcessor
+  }
+}
+
+repositories {
+  mavenCentral()
+}
+
+ext {
+  set('springCloudVersion', "2023.0.0")
+}
+
+dependencies {
+  implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+  implementation 'org.springframework.boot:spring-boot-starter-validation'
+  implementation 'org.springframework.boot:spring-boot-starter-web'
+  implementation 'org.springframework.cloud:spring-cloud-starter-config'
+  implementation 'org.springframework.cloud:spring-cloud-starter-bootstrap'
+  implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
+  annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
+  annotationProcessor 'jakarta.persistence:jakarta.persistence-api:3.1.0'
+  annotationProcessor 'jakarta.annotation:jakarta.annotation-api:2.1.1'
+
+  compileOnly 'org.projectlombok:lombok'
+  runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
+  annotationProcessor 'org.projectlombok:lombok'
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+dependencyManagement {
+  imports {
+    mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+  }
+}
+
+tasks.named('test') {
+  useJUnitPlatform()
+}
+
+def querydslDir = "$buildDir/generated/querydsl"
+
+sourceSets {
+  main.java.srcDirs += [ querydslDir ]
+}
+
+tasks.withType(JavaCompile) {
+  options.getGeneratedSourceOutputDirectory().set(file(querydslDir))
+}
+
+clean.doLast {
+  file(querydslDir).deleteDir()
+}
+```
+
+> src/main/resources/bootstrap.yml 
+
+```yaml
+spring:
+  application:
+    name: board-service
+  profiles:
+    active: dev
+  cloud:
+    config:
+      uri: http://localhost:8071
+```
+
+> 스프링 클라우드 컨피그 서버 : src/main/resources/config/board-service.yml
+
+```yaml
+server:
+  port: 8081
+
+spring:
+  # JPA 설정
+  jpa:
+    properties:
+      hibernate:
+        show_sql: true
+        format_sql: true
+        use_sql_comments: true
+    hibernate:
+      ddlAuto: create
+
+logging:
+  level:
+    org:
+      hibernate:
+        type:
+          descriptor:
+            sql: trace
+```
+
+> 스프링 클라우드 컨피그 서버 : src/main/resources/config/board-service-dev.yml
+
+```yaml
+spring:
+  datasource:
+    driverClassName: oracle.jdbc.driver.OracleDriver
+    url: jdbc:oracle:thin:@localhost:1521:orcl
+    username: PROJECT
+    password: '{cipher}4b93b6c7060f269410654622559659db1e9049bd829a15521df43b825e6a860d'
+```
+
+> 스프링 클라우드 컨피그 서버 : src/main/resources/config/board-service-test.yml
+
+```yaml
+spring:
+  datasource:
+    driverClassName: org.h2.Driver
+    url: jdbc:h2:mem:test
+    username: sa
+    password:
+```
+
+- 스프링 클라우드 컨피그 서버 구성 서버를 재시작합니다.
+- 웹 브라우저 주소창에 http://localhost:8071/board-service/default 를 입력하면 board-service.yml 파일에 포함된 모든 속성과 함께 반환된 JSON으로 표시된다.
+
+![image7](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/7.png)
+
+
+- 게시판 서비스 소스 구성
+
+> src/main/java/.../entity/Base.java
+
+```java
+package org.choongang.board.entity;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.MappedSuperclass;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
+
+@Getter @Setter
+@MappedSuperclass
+@EntityListeners(AuditingEntityListener.class)
+public abstract class Base {
+    @CreatedDate
+    @Column(updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(insertable = false)
+    private LocalDateTime modifiedAt;
+}
+```
+
+> src/main/java/.../entity/Board.java
+
+```java
+package org.choongang.board.entity;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@Entity
+@NoArgsConstructor @AllArgsConstructor
+public class Board extends Base {
+    @Id
+    @Column(length=40)
+    private String bid; // 게시판 아이디
+
+    @Column(length=90, nullable = false)
+    private String bName; // 게시판명
+    private boolean active; // 사용 여부
+
+    @Lob
+    private String category; // 게시판 분류
+}
+```
+
+> src/main/java/.../repository/BoardRepository.java
+
+```java
+package org.choongang.board.repository;
+
+import org.choongang.board.entity.Board;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.querydsl.QuerydslPredicateExecutor;
+
+public interface BoardRepository extends JpaRepository<Board, String>, QuerydslPredicateExecutor<Board> {
+}
+```
+
+> src/main/java/.../controller/BoardController.java
+
+```java 
+
+```
 
 ## 스프링 유레카에 서비스 등록
 
