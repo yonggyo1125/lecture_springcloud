@@ -213,6 +213,9 @@ Will be trying the next url if available.
 
 ## 게시판 서비스 구성
 
+- Spring Initializr(https://start.spring.io/)에서 프로젝트를 생성하고 시작해 보자.
+
+![image6](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/6.png)
 
 
 ## 스프링 유레카에 서비스 등록
