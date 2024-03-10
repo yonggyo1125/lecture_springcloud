@@ -19,3 +19,12 @@ logging:
         type:
           descriptor:
             sql: trace
+
+eureka:
+  instance:
+    preferIpAddress: true
+  client:
+    registerWithEureka: true
+    fetchRegistry: true
+    serviceUrl:
+      defaultZone: http://localhost:8070/eureka/

@@ -457,7 +457,35 @@ public class MvcConfig implements WebMvcConfigurer {
 
 > src/main/java/.../controller/BoardController.java
 
+- 유레카 서비스 등록을 위한 임시 데이터 생성
+
 ```java 
+package org.choongang.board.controller;
+
+import org.choongang.board.entity.Board;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.stream.IntStream;
+
+@RestController
+@RequestMapping("/api/v1/board")
+public class BoardController {
+
+    @GetMapping
+    public List<Board> list() {
+        List<Board> items = IntStream.rangeClosed(1, 10)
+                .mapToObj(i -> Board.builder()
+                        .bid("board" + i)
+                        .bName("게시판" + i)
+                        .build())
+                .toList();
+
+        return items;
+    }
+}
 
 ```
 
@@ -467,11 +495,101 @@ public class MvcConfig implements WebMvcConfigurer {
 
 - 회원 및 게시판 서비스의 build.gradle에 스프링 유레카 의존성을 추가하는 것이다. 
 > src/main/resources/build.gradle 
+>
+> implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
 ```yaml
-
+...
+  
+dependencies {
+    ...
+  
+	implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+  
+    ...
+}
+  
+...
 ```
 
 - spring-cloud-starter-netflix-eureka-client 산출물에는 스프링 클라우드가 유레카 서비스와 상호 작용하는 데 필요한 JAR 파일들이 있다. build.gradle 파일을 설정한 후 등록하려는 서비스의 bootstrap.yml 파일에 spring.application.name을 설정했는지 확인해야 한다.
+
+- 유레카에 등록된 모든 서비스는 애플리케이션 ID와 인스턴스 ID라는 두 가지 구성 요소와 연관되어 있다. 애플리케이션 ID는 서비스 인스턴스의 그룹을 나타낸다. 스프링 부트 마이크로서비스에서 애플리케이션 ID는 항상 spring.application.name 프로퍼티에서 설정된 값이다. 게시판 서비스는 이 프로퍼티 값을 board-service로 지정했고, 회원 서비스는 member-service로 지정했다. 인스턴스 ID는 각 서비스 인스턴스를 나타내고자 무작위로 자동 생성된 숫자다.
+
+- 다음으로 스프링 부트가 조직 서비스와 라이선싱 서비스를 유레카에 등록하도록 만들어야 한다. 등록을 위해서는 스프링 컨피그 서비스에서 관리하는 서비스의 구성 파일에 구성 정보를 추가한다. 이 구성 파일은 스프링 컨피그 서버 프로젝트의 다음 파일 두 개다.
+
+> src/main/resources/config/board-service.yml
+
+```yaml
+
+...
+
+eureka:
+  instance:
+    preferIpAddress: true
+  client:
+    registerWithEureka: true
+    fetchRegistry: true
+    serviceUrl:
+      defaultZone: http://localhost:8070/eureka/
+```
+ 
+> src/main/resources/config/member-service.yml
+
+```yaml
+...
+
+eureka:
+  instance:
+    preferIpAddress: true
+  client:
+    registerWithEureka: true
+    fetchRegistry: true
+    serviceUrl:
+      defaultZone: http://localhost:8070/eureka/
+```
+
+>  IP 주소를 선호하는 이유
+>
+> 기본적으로 유레카는 호스트 이름(hostname)을 사용하여 접속하는 서비스를 등록한다. 이것은 서비스가 DNS 기반의 호스트 이름으로 할당되는 서버 기반 환경에서 잘 작동한다. 그러나 컨테이너 기반의 배포 환경(예 도커)에서 컨테이너는 DNS 엔트리가 임의로 생성한 호스트 이름을 할당해서 시작된다. eureka.instance.preferIpAddress를 true로 설정하지 않는다면 클라이언트 애플리케이션은 해당 컨테이너에 대한 DNS 엔트리가 없어 호스트 이름의 위치를 제대로 얻지 못한다. preferIpAddress 프로퍼티를 설정하면 클라이언트가 IP 주소로 전달받도록 유레카에 알려 준다.
+> 
+> 개인적으로 이 프로퍼티를 항상 true로 설정한다. 클라우드 기반의 마이크로서비스는 일시적(ephemeral)이고 무상태형(stateless)이므로 자유롭게 시작하고 종료할 수 있다. 따라서 IP 주소가 이러한 유형의 서비스에는 더 적합하다.
+
+- <code>eureka.client.registerWithEureka</code> 프로퍼티는 조직 및 라이선싱 서비스가 유레카에 등록하도록 지시한다. <code>eureka.client.fetchRegistry</code> 프로퍼티는 스프링 유레카 클라이언트에 레지스트리의 로컬 복사본을 가져오도록 지시한다. 이 값을 true로 설정하면 레지스트리를 검색할 때마다 유레카 서비스를 호출하는 대신 레지스트리를 로컬에 캐싱하고, 클라이언트 소프트웨어는 30초마다 유레카 서비스에 레지스트리 변경 사항을 확인한다.
+
+- 마지막 프로퍼티인 eureka.client.serviceUrl.defaultZone은 클라이언트가 서비스 위치를 확인하는 데 사용하는 유레카 서비스 목록으로, 쉼표(,)로 구분해서 추가할 수 있다. 각 서비스의 부트스트랩 파일에서 이전에 정의한 모든 프로퍼티의 키-값을 선언할 수 있지만, 목표는 구성 설정을 스프링 컨피그 서비스에 위임하는 것이다. 그래서 스프링 컨피그 서비스 저장소의 서비스 구성 파일에 모든 구성 정보를 등록하는 것이다. 지금까지 이 서비스들의 부트스트랩 파일에는 애플리케이션 이름, 프로파일(필요한 경우)과 스프링 클라우드 컨피그 URI만 포함되었다.
+
+
+### 유레카 REST API
+
+- 현재 유레카 서비스에 두 개의 서비스가 등록되어 있다. 유레카의 REST API 또는 유레카 대시보드를 사용하여 레지스트리 내용을 볼 수 있다.
+- REST API로 서비스의 모든 인스턴스를 보려면 다음 GET 엔드포인트를 호출하라.
+
+```
+http://<eureka service>:8070/eureka/apps/<APPID>
+```
+
+- 예를 들어 레지스트리의 조직 서비스를 보려면 http://localhost:8070/eureka/apps/member-service 엔드포인트를 호출할 수 있다.
+
+![image8](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/8.png)
+
+- 유레카에서 반환되는 기본 데이터 형식은 XML이다. 따라서 유레카는 그림 6-6의 데이터를 JSON 페이로드로 반환받으려면 Accept HTTP 헤더를 application/json으로 설정해야 한다.
+
+![image9](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/9.png)
+
+### 유레카 대시보드 
+
+- 유레카 서비스가 시작되면 브라우저에서 http://localhost:8070으로 이동하여 유레카 대시보드를 볼 수 있다. 유레카 대시보드를 통해 서비스 등록 상태를 볼 수 있다.
+
+![image10](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/4.%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%94%94%EC%8A%A4%EC%BB%A4%EB%B2%84%EB%A6%AC/images/10.png)
+
+> 등록된 회원 및 게시판 서비스를 보여주는 유레카 대시보드
+
+> 서비스가 유레카에 등록될 때 유레카는 서비스가 사용 가능해질 때까지 30초 동안 연속 세 번의 상태를 확인하며 대기한다. 이 워밍업 대기 시간 때문에 개발자가 서비스가 시작된 직후 서비스를 호출하면 유레카는 그 서비스가 등록되지 않은 것으로 혼동할 수 있었다.
+> 
+> 이러한 현상은 유레카 서비스와 애플리케이션 서비스(라이선싱 및 조직 서비스)가 모두 동시에 시작하기 때문에 도커 환경에서 실행되는 코드 예제에서도 확인할 수 있다. 따라서 애플리케이션이 시작한 후 서비스 자체가 시작되었음에도 서비스를 찾을 수 없다는 404 에러를 수신할 수 있다는 점을 인지해야 한다. 이때는 서비스를 호출하기 전에 30초를 기다려야 한다.
+>
+> 하지만 운영 환경에서는 유레카 서비스가 이미 실행 중일 것이므로 기존 서비스를 배포하더라도 이전 서비스가 요청을 받을 수 있도록 유지된다.
+
 
 ## 서비스 디스커버리를 이용한 서비스 검색
