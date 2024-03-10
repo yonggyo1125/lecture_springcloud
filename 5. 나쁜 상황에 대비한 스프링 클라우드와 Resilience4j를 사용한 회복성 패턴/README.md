@@ -77,14 +77,16 @@ Retry(CircuitBreaker(RateLimiter(TimeLimiter(Bulkhead(Function)))))
   - 회로 차단기가 호출을 중단해야 하거나 호출이 실패할 경우 폴백 전략 구현 방법
   - 서비스 호출을 격리하고 서로 다른 원격 자원 간 벌크헤드를 구축하고자 서비스 내 분리된 스레드 풀을 사용하는 방법
 
-## 스프링 클라우드와 Resilience4j를 사용하는 라이선싱 서비스 설정
+## 스프링 클라우드와 Resilience4j를 사용하여 회원 서비스 설정
 
 - Resilience4j를 사용해 보려면 먼저 프로젝트의 build.gradle 파일에서 필요한 의존성을 포함해야 한다.
 
 > member-service의 build.gradle에 다음 의존성을 추가 
 > 
 > implementation 'io.github.resilience4j:resilience4j-spring-boot3'
+> 
 > implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+> 
 > implementation 'org.springframework.boot:spring-boot-starter-aop'
 
 ```groovy
