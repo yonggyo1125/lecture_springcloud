@@ -79,7 +79,213 @@ Retry(CircuitBreaker(RateLimiter(TimeLimiter(Bulkhead(Function)))))
 
 ## 스프링 클라우드와 Resilience4j를 사용하는 라이선싱 서비스 설정
 
+- Resilience4j를 사용해 보려면 먼저 프로젝트의 build.gradle 파일에서 필요한 의존성을 포함해야 한다.
+
+> member-service의 build.gradle에 다음 의존성을 추가 
+> 
+> implementation 'io.github.resilience4j:resilience4j-spring-boot3'
+> implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+> implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+```groovy
+...
+
+dependencies {
+  
+  ...
+  
+  implementation 'io.github.resilience4j:resilience4j-spring-boot3'
+  implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+  implementation 'org.springframework.boot:spring-boot-starter-aop'
+  
+  ...
+  
+}
+...
+
+```
+
+- **resilience4j-spring-boot3** :  Resilience4j 스프링 부트 라이브러리를 내려받도록 지시하는데, 이 라이브러리는 커스텀 패턴의 애너테이션을 사용할 수 있게 해 준다.
+- **resilience4j-circuitbreaker와 resilience4j-timelimiter** : 회로 차단기 및 속도 제한기(rate limiter)를 구현한 로직이 포함된다.
+- **spring-boot-starter-aop** : 스프링 AOP 관점을 실행하는 데 필요
+
+> 관점 지향 프로그래밍(aspect-oriented programming)은 시스템의 다른 부분에 영향을 주는 프로그램 부분(횡단 관심사(cross-cutting concerns))을 분리하여 모듈성을 높이려는 프로그래밍 패러다임이다. AOP는 코드를 수정하지 않고 새로운 동작을 기존 코드에 추가한다.
+
 ## 회로 차단기 구현
+
+- 회로 차단기를 이해하려면 전기 시스템과 비교해야 한다. 전기 시스템에서 전선을 통해 너무 많은 전류가 흐른다면 어떻게 될까? 기억하겠지만, 회로 차단기가 문제를 감지하면 시스템 나머지 부분의 연결을 끊고 다른 구성 요소의 추가 손상을 방지한다. 소프트웨어 코드 아키텍처에서도 마찬가지다.
+- 코드에서 회로 차단기가 추구하는 것은 원격 호출을 모니터링하고 서비스를 장기간 기다리지 않게 하는 것이다. 이때 회로 차단기는 연결을 종료하고 더 많이 실패하며 오작동이 많은 호출이 있는지 모니터링하는 역할을 한다. 그런 다음 이 패턴은 빠른 실패(fast fail)를 구현하고 실패한 원격 서비스에 추가로 요청하는 것을 방지한다. Resilience4j의 회로 차단기에는 세 개의 일반 상태를 가진 유한 상태 기계가 구현되어 있다.
+
+![image3](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/5.%20%EB%82%98%EC%81%9C%20%EC%83%81%ED%99%A9%EC%97%90%20%EB%8C%80%EB%B9%84%ED%95%9C%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%EC%99%80%20Resilience4j%EB%A5%BC%20%EC%82%AC%EC%9A%A9%ED%95%9C%20%ED%9A%8C%EB%B3%B5%EC%84%B1%20%ED%8C%A8%ED%84%B4/images/3.png)
+> Resilience4j 회로 차단기 상태: 닫힌, 열린, 반열린 상태 
+
+- 처음에 Resilience4j 회로 차단기는 닫힌 상태에서 시작한 후 클라이언트 요청을 기다린다. 닫힌 상태는 링 비트 버퍼(ring bit buffer)를 사용하여 요청의 성과 및 실패 상태를 저장한다. 요청이 성공하면 회로 차단기는 링 비트 버퍼에 0비트를 저장하지만, 호출된 서비스에서 응답받지 못하면 1비트를 저장한다.
+- 실패율을 계산하려면 링을 모두 채워야 한다. 예를 들어 이전 시나리오에서 실패율을 계산하려면 적어도 12 호출은 평가해야 한다. 11개의 요청만 평가했을 때 11개의 호출이 모두 실패하더라도 회로 차단기는 열린 상태로 변경되지 않는다. 회로 차단기는 고장률이 임계 값(구성 설정 가능한)을 초과할 때만 열린다.
+
+![image4](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/5.%20%EB%82%98%EC%81%9C%20%EC%83%81%ED%99%A9%EC%97%90%20%EB%8C%80%EB%B9%84%ED%95%9C%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%EC%99%80%20Resilience4j%EB%A5%BC%20%EC%82%AC%EC%9A%A9%ED%95%9C%20%ED%9A%8C%EB%B3%B5%EC%84%B1%20%ED%8C%A8%ED%84%B4/images/4.png)
+
+> 결과가 12개인 Resilience4j 회로 차단기의 링 비트 버퍼. 이 링은 성공한 모든 요청에서는 0이 되고, 호출된 서비스에서 응답받지 못하면 1이 된다.
+
+- 회로 차단기가 열린 상태라면 설정된 시간 동안 호출은 모두 거부되고 회로 차단기는 CallNotPermittedException 예외를 발생시킨다. 설정된 시간이 만료되면 회로 차단기는 반열린 상태로 변경되고 서비스가 여전히 사용 불가한지 확인하고자 일부 요청을 허용한다.
+- 반열린 상태에서 회로 차단기는 설정 가능한 다른 링 비트 버퍼를 사용하여 실패율을 평가한다. 이 실패율이 설정된 임계치보다 높으면 회로 차단기는 다신 열린 상태로 변경된다. 임계치보다 작거나 같다면 닫힌 상태로 돌아간다. 이것은 다소 혼란스러울 수 있지만 **열린 상태에서는 회로 차단기가 모든 요청을 거부하고 닫힌 상태에서는 수락한다는 점**을 기억하라.
+- 또한 Resilience4j 회로 차단기 패턴에서 다음과 같은 추가 상태를 정의할 수 있다. 다음 상태를 벗어나는 유일한 방법은 회로 차단기를 재설정하거나 상태 전환을 트리거하는 것이다.
+  - **비활성 상태(DISABLED)**: 항상 액세스 허용
+  - **강제 열린 상태(FORCED_OPEN)**: 항상 액세스 거부
+
+- Resilience4j 구현 방법을 두 가지 큰 범주에서 살펴보면
+  - 첫째, Resilience4j 회로 차단기로 라이선스 및 조직 서비스의 데이터베이스에 대한 모든 호출을 래핑(wrapping)한다.
+  - 둘째, Resilience4j를 사용하여 두 서비스 간 호출을 래핑한다.
+- 두 호출 범주가 다르지만 Resilience4j를 사용하면 이러한 호출이 완전히 동일하다는 것을 알 수 있다.
+
+![image5](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/5.%20%EB%82%98%EC%81%9C%20%EC%83%81%ED%99%A9%EC%97%90%20%EB%8C%80%EB%B9%84%ED%95%9C%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%EC%99%80%20Resilience4j%EB%A5%BC%20%EC%82%AC%EC%9A%A9%ED%95%9C%20%ED%9A%8C%EB%B3%B5%EC%84%B1%20%ED%8C%A8%ED%84%B4/images/5.png)
+> Resilience4j는 모든 원격 자원 호출 사이에 위치하여 클라이언트를 보호하고, 원격 자원이 데이터베이스나 REST 기반 서비스를 호출하는지는 중요하지 않다.
+
+- 동기식 회로 차단기로 회원 서비스 데이터베이스에서 회원 서비스의 데이터 검색 호출을 래핑하는 방법을 보여 주고 논의를 시작해 보자. 동기식 호출을 이용하여 라이선싱 서비스는 데이터를 검색하지만, 처리를 계속 진행하기 전에 SQL 문이 완료되거나 회로 차단기가 타임아웃이 될 때까지 대기한다.
+
+- 회로 차단기를 사용한 원격 자원 호출 래핑하기
+
+> member-service: src/main/java/.../constant/Authority.java
+
+```java
+package org.choongang.member.constant;
+
+public enum Authority {
+    USER, // 일반 사용자
+    ADMIN // 최고 관리자
+}
+```
+
+> member-service: src/main/java/.../entity/Member.java
+
+```java
+...
+public class Member extends Base {
+  ...
+
+  @Enumerated(EnumType.STRING)
+  @Column(length=10, nullable = false)
+  private Authority authority = Authority.USER;
+}
+```
+
+> member-service: src/main/java/.../repository/MemberRepository.java
+
+```java
+...
+
+public interface MemberRepository extends JpaRepository<Member, Long>, QuerydslPredicateExecutor<Member> {
+    
+  ...
+
+  Optional<Member> findByEmail(String email);
+}
+
+```
+
+> member-service: src/main/java/.../service/MemberInfo.java
+
+```java
+package org.choongang.member.service;
+
+import lombok.Builder;
+import org.choongang.member.entity.Member;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+
+@Builder
+public class MemberInfo implements UserDetails {
+
+    private String email;
+    private String password;
+    private Member member;
+    private Collection<? extends GrantedAuthority> authorities;
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return authorities;
+    }
+
+    @Override
+    public String getPassword() {
+        return password;
+    }
+
+    @Override
+    public String getUsername() {
+        return email;
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+}
+```
+
+> member-service: src/main/java/.../service/MemberInfoService.java
+
+```java
+package org.choongang.member.service;
+
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import lombok.RequiredArgsConstructor;
+import org.choongang.member.entity.Member;
+import org.choongang.member.repository.MemberRepository;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import java.util.Arrays;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class MemberInfoService implements UserDetailsService {
+
+    private final MemberRepository memberRepository;
+
+    @Override
+    @CircuitBreaker(name="memberService")  // Resilience4j 회로 차단기를 사용하여 loadUserByUsername(..) 메서드를 @CircuitBreaker로 래핑한다.
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+
+        Member member = memberRepository.findByEmail(username).orElseThrow(() -> new UsernameNotFoundException(username));
+
+        List<SimpleGrantedAuthority> authorities = Arrays.asList(new SimpleGrantedAuthority(member.getAuthority().name()));
+
+        return MemberInfo.builder()
+                .email(member.getEmail())
+                .password(member.getPassword())
+                .member(member)
+                .authorities(authorities)
+                .build();
+    }
+}
+```
+
+- 이 코드는 엄청 많아 보이지도 않고 실제로도 많지 않지만 이 한 개의 애너테이션에는 다양한 기능이 들어 있다. @CircuitBreaker 애너테이션을 사용하면 loadUserByUsername() 메서드가 호출될 때마다 해당 호출은 Resilience4j 회로 차단기로 래핑된다. 회로 차단기는 실패한 모든 loadUserByUsername()에 대한 메서드 호출 시도를 가로챈다.
+
+- 이 코드는 데이터베이스가 올바르게 작동한다면 아무 일도 하지 않는다. 다음 코드에서 느리거나 타임아웃된 데이터베이스 쿼리가 수행되는 loadUserByUsername() 메서드를 시뮬레이션해 보자.
+
+
 
 ## 폴백 처리
 

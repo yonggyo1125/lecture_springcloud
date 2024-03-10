@@ -21,6 +21,8 @@ public class QMember extends EntityPathBase<Member> {
 
     public final QBase _super = new QBase(this);
 
+    public final EnumPath<org.choongang.member.constant.Authority> authority = createEnum("authority", org.choongang.member.constant.Authority.class);
+
     public final StringPath confirmPassword = createString("confirmPassword");
 
     //inherited
