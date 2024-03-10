@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  configserver:
+    image: configserver:0.0.1-SNAPSHOT
+    ports:
+      - "8071:8071"
+  memberservice:
+    image: member:0.0.1-SNAPSHOT
+    environment:  # member-service 컨테이너를 위한 환경 변수를 지정한다.
+      SPRING_PROFILE_ACTIVE: "dev" # SPRING_PROFILES_ACTIVE 환경 변수를 스프링 부트 서비스 명령줄로 전달하고 스프링 부트에 실행할 프로파일을 알려준다.
+      SPRING_CLOUD_CONFIG_URI: http://localhost:8071  # 컨피그 서비스의 엔드포인트

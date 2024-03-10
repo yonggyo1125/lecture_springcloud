@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: member-service  # 이름을 지정하면 스프링 클라우드 컨피그 클라이언트는 어떤 서비스가 검색되는지 알 수 있다.
+  profiles:
+    active: dev # 서비스가 실행될 프로파일을 지정한다. 프로파일은 환경에 매핑된다.
+  cloud:
+    config:
+      uri: http://localhost:8071 # 스프링 클라우드 컨피그 서버의 위치를 지정한다.
