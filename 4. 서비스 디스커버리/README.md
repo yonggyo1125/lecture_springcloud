@@ -439,6 +439,22 @@ public interface BoardRepository extends JpaRepository<Board, String>, QuerydslP
 }
 ```
 
+> src/main/java/.../config/MvcConfig.java
+
+```java
+package org.choongang.board.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+@EnableJpaAuditing
+public class MvcConfig implements WebMvcConfigurer {
+    
+}
+```
+
 > src/main/java/.../controller/BoardController.java
 
 ```java 
