@@ -178,10 +178,130 @@ spring:
 ![image4](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/4.png)
 
 
+- 게이트웨이 서버는 http://localhost:8072 엔드포인트로 액세스된다. 호출하려는 서비스(게시판 서비스)는 엔드포인트 경로의 첫 번째 부분(board-service)으로 표시된다. 
+
+![image5](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/5.png)
+> 스프링 클라우드 게이트웨이는 요청을 게시판 서비스의 인스턴스로 매핑하고 board-service 애플리케이션 이름을 사용한다.
+
+- 유레카와 함께 스프링 클라우드 게이트웨이를 사용하는 장점은 호출할 수 있는 엔드포인트가 하나라는 사실 외에 게이트웨이를 수정하지 않고도 서비스 인스턴스를 추가 및 제거할 수 있다는 것이다. 예를 들어 유레카에 새로운 서비스를 추가하면 게이트웨이는 서비스의 물리적 엔드포인트 위치에 대해 유레카와 통신하기 때문에 자동으로 호출을 라우팅할 수 있다.
+
+- 게이트웨이 서버가 관리하는 경로를 확인하려면 게이트웨이 서버의 actuator/gateway/routes 엔드포인트를 통해 경로 목록을 볼 수 있다. 이 엔드포인트는 서비스의 모든 매핑 목록을 반환한다.
+
+![image6](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/6.png)
+> 유레카에 매핑된 각 서비스는 이제 스프링 클라우드 게이트웨이 경로로 매핑된다.
+
+- 스프링 클라우드 게이트웨이에 등록된 서비스의 매핑 정보를 보여 준다. 또한 서술자(predicate), 관리 포트, 경로 ID, 필터 등 추가적인 데이터를 확인할 수 있다.
+
+### 서비스 디스커버리를 이용한 수동 경로 매핑
+
+- 스프링 클라우드 게이트웨이는 유레카 서비스 ID로 생성된 자동화된 경로에만 의존하지 않고 명시적으로 경로 매핑을 정의할 수 있어 코드를 더욱 세분화할 수 있다.
+- 게이트웨이 기본 경로인 /board-service/api/v1/board로 게시판 서비스에 액세스하는 대신 게시판 서비스 이름을 줄여 경로를 단순화한다고 가정해 보자. 스프링 클라우드 컨피그 서버 저장소에 있는 구성 파일(/configserver/src/main/resources/config/gateway-server.yml)을 수동으로 정의하여 수행할 수 있다. 다음 코드에서 이 수동 매핑 방법을 볼 수 있다.
+
+- gateway-server.yml 파일에서 수동 경로 매핑하기
+
+> 스프링 클라우드 컨피그 서버 : src/main/resources/config/gateway-server.yml
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      discovery.locator:  # 서비스 디스커버리에 등록된 서비스를 기반으로 게이트웨이가 경로를 생성하도록 설정한다.
+        enabled: true
+        lowerCaseServiceId: true
+      routes:
+        - id: board-service  # 이 선택적(optional) ID는 임의의 경로에 대한 ID다.
+          uri: lb://board-service   # 이 경로 대상 URI를 설정한다.
+
+          predicates:  # 경로(path)는 load() 메서드로 설정되지만, 여러 옵션 중 하나다.
+            - Path=/board/**
+
+          filters:  # 응답을 보내기 전이나 후에 요청 또는 응답을 수정하고 스프링 web.filters들을 필터링 한다.
+            - RewritePath=/board/(?<path>.*),/$\{path}  # 매개변수 및 교체 순서(replacement order)로 경로 정규식(path regexp)을 받아 요청 경로를 /board/**에서 /**으로 변경한다.
+```
+
+- 이 구성을 추가하면 /board/api/v1/board 경로로 조직 서비스에 액세스할 수 있다. 이제 게이트웨이 서버의 엔드포인트를 재확인하면 그림과 같은 결과가 출력된다. 주의 깊게 살펴보면 조직 서비스에 대해 두 개의 항목이 있음을 알 수 있다.
+  - 첫 번째 서비스 항목은 gateway-server.yml 파일에서 정의한 매핑(board/**:board-service)이고,
+  - 다른 서비스 항목은 조직 서비스에 대해 유레카 ID를 기반으로 게이트웨이에서 생성된 자동 매핑(board-service/**: board-service)이다.
+
+>  이트웨이가 유레카 서비스 ID를 기반으로 자동화된 경로 매핑을 사용하여 서비스를 노출할 때, 실행 중인 서비스 인스턴스가 없다면 게이트웨이는 서비스 경로를 아예 노출하지 않는다. 그러나 수동으로 경로를 서비스 디스커버리 ID에 매핑하면 유레카에 등록된 인스턴스가 없더라도 게이트웨이는 여전히 경로를 표시한다. 이때 존재하지 않는 서비스에 대한 경로를 호출하면 HTTP 500 에러가 반환된
+
+- 유레카 서비스 ID 경로에 대한 자동화된 매핑을 제외하고 직접 정의한 조직 서비스 경로만 지원하려고 한다면 gateway-server.yml 파일에 추가한 spring.cloud.gateway.discovery.locator 항목을 제거한다.
+
+![image7](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/7.png)
+> 게시판 서비스를 수동으로 매핑할 때 /actuator/gateway/routes에 대한 게이트웨이 호출 결과
+
+> 자동 라우팅 사용 여부는 신중하게 고려해야 한다. 새로운 서비스가 많이 추가되지 않는 안정적인 환경에서 수동으로 경로를 추가하는 것은 단순하지만, 대규모 환경에서 새로운 서비스가 많다면 지루한 작업이 될 수 있다
+
+- gateway-server.yml 파일에서 discovery locator 항목 제거하기 
+
+> 스프링 클라우드 컨피그 서버 : src/main/resources/config/gateway-server.yml 
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: board-service  # 이 선택적(optional) ID는 임의의 경로에 대한 ID다.
+          uri: lb://board-service   # 이 경로 대상 URI를 설정한다.
+
+          predicates:  # 경로(path)는 load() 메서드로 설정되지만, 여러 옵션 중 하나다.
+            - Path=/board/**
+
+          filters:  # 응답을 보내기 전이나 후에 요청 또는 응답을 수정하고 스프링 web.filters들을 필터링 한다.
+            - RewritePath=/board/(?<path>.*),/$\{path}  # 매개변수 및 교체 순서(replacement order)로 경로 정규식(path regexp)을 받아 요청 경로를 /board/**에서 /**으로 변경한다.
+```
+
+- 이제 게이트웨이 서버의 actuator/gateway/routes 엔드포인트를 호출하면 정의한 조직 서비스 매핑만 표시되어야 한다.
+
+![image8](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/8.png)
+> 게시판 서비스에 대한 수동 매핑만 있을 때 actuator/gateway/routes 호출 결과 
+
+### 동적으로 라우팅 구성을 재로딩 
+
+- 동적인 라우팅 재로딩 기능은 게이트웨이 서버의 재시작 없이 경로 매핑을 변경할 수 있기 때문에 유용하다. 따라서 기존 경로를 빠르게 수정할 수 있고, 해당 환경 내 각 게이트웨이 서버를 새로운 경로로 변경하는 작업을 수행한다.
+- actuator/gateway/routes 엔드포인트를 입력하면 현재 게이트웨이에서 게시판 서비스(board service)를 볼 수 있다. 이제 새로운 매핑을 바로 추가하려면, 구성 파일을 변경하고 해당 변경 사항을 스프링 클라우드 컨피그 서버가 검색하는 구성 데이터가 저장된 깃 저장소를 반영하여 깃 허브에 커밋한다.
+- 스프링 액추에이터(Spring Actuator)는 라우팅 구성 정보를 다시 로드할 수 있도록 POST 기반 엔드포인트 경로인 actuator/gateway/refresh를 노출한다. 이 actuator/gateway/refresh를 호출한 후 /routes 엔드포인트를 호출하면 두 개의 새로운 경로를 확인할 수 있다. actuator/gateway/refresh의 응답은 응답 내용(body) 없이 HTTP 200 상태 코드만 반환한다
 
 ---
 
 ## 스프링 클라우드 게이트웨이의 진정한 능력: Predicate와 Filter Factories
+
+- 게이트웨이로 모든 요청을 프록시(proxy)할 수 있기 때문에 서비스 호출을 단순화할 수 있다. 하지만 스프링 클라우드 게이트웨이의 진정한 힘은 게이트웨이를 통하는 모든 서비스 호출에 적용될 사용자 정의 로직을 작성할 때 발휘된다. 대부분의 경우 모든 서비스에서 보안, 로깅, 추적 등 일관된 애플리케이션 정책을 적용하기 위해 이러한 사용자 정의 로직이 사용된다.
+- 애플리케이션 정책 전략을 구현하기 위해 애플리케이션의 각 서비스를 수정하지 않고 모든 서비스에 적용하길 원하기 때문에 이러한 애플리케이션 정책들은 횡단 관심사(cross-cutting concerns)로 간주된다. 이러한 방식으로 스프링 클라우드 게이트웨이 Predicate과 Filter Factories는 스프링 관점(aspect) 클래스와 유사하게 사용할 수 있다.
+- 이들을 사용하면 다양한 동작을 일치시키거나 가로챌 수 있어 원래 코드 작성자 모르게 호출 동작을 변경하거나 꾸밀 수 있다. 서블릿 필터나 스프링 관점 클래스가 특정 서비스에 맞게 적용되었더라도 게이트웨이와 게이트웨이의 Predicate 및 Filter Factories를 사용하면 게이트웨이로 라우팅되는 모든 서비스에 대한 공통 관심사를 구현할 수 있다.
+- 서술자(predicate)를 사용하면 요청을 처리하기 전에 요청이 조건 집합을 충족하는지 확인할 수 있다. 그림은 요청이 스프링 클라우드 게이트웨이를 통해 유입될 때 서술자와 필터를 적용한 이 게이트웨이 아키텍처를 보여 준다.
+
+![image9](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/9.png)
+> 요청이 생성될 때 스프링 클라우드 게이트웨이 아키텍처에서 서술자와 필터를 적용하는 방법  
+
+- 먼저 게이트웨이 클라이언트(브라우저, 앱 등) 스프링 클라우드 게이트웨이에 요청을 보낸다. 요청이 수신되면 게이트웨이 핸들러(gateway handler)로 이동하며, 이 핸들러는 요청된 경로가 액세스하려는 특정 경로의 구성과 일치 여부를 확인하는 역할을 한다. 정보가 모두 일치하면 필터를 읽고 해당 필터에 요청을 보내는 역할을 하는 게이트웨이로 진입한다. 요청이 모든 필터를 통과하면 해당 요청은 이제 설정된 경로의 마이크로서비스로 전달된다.
+
+### 게이트웨이 Predicate Factories
+
+- 게이트웨이의 서술자는 요청을 실행하거나 처리하기 전에 요청이 조건 집합을 충족하는지 확인하는 객체다. 경로마다 논리 AND로 결합할 수 있는 여러 Predicate Factories를 설정할 수 있다. 다음 표는 스프링 클라우드 게이트웨이의 모든 Predicate Factories를 나열한다.
+- 이러한 서술자는 코드에 프로그래밍 방식이나 앞 절에서 생성한 구성 파일을 사용하여 적용할 수 있다. 책에서는 다음과 같은 구성 파일 안에 있는 predicates를 통해 서술자를 사용한다.
+
+```yaml
+predicates
+    - Path=/board/**
+```
+
+> 스프링 클라우드 게이트웨이의 내장형 predicates
+
+|Predicate| 설명                                                             |예|
+|-----|----------------------------------------------------------------|------|
+|Before| 설정된 일시 전에 발생한 요청인지 확인한다.                                       |Before=2020-03-11T...|
+|After| 설정된 일시 이후에 발생한 요청인지 확인한다.                                      |After=2020-03-11T...|
+|Between| 설정된 두 일시 사이에 발생한 호출인지 확인한다. 시작 일시는 포함되고 종료 일시는 포함되지 않는다(미만).   |Between=2020-03-11T..., 2020-04-11T...|
+|Header| 헤더 이름과 정규식 매개변수를 사용하여 해당 값과 정규식을 확인한다.                         |Header=X-Request-Id, \d+|
+|Host| “.” 호스트 이름 패턴으로 구분된 안티-스타일 패턴을 매개변수로 받아 Host 헤더를 주어진 패턴과 비교한다. |Host=**.example.com|
+|Method| HTTP 메서드(verb)를 비교한다.                                          |Method=GET|
+|Path|스프링 PathMatcher를 사용한다.|Path=/board/{bid}}
+|Query|필수 매개변수와 정규식 매개변수를 사용하여 쿼리 매개변수와 비교한다.|Query=id, 1|
+|Cookie|쿠키 이름과 정규식 매개변수를 사용하여 HTTP 요청 헤더에서 쿠키를 찾아 그 값과 정규식이 일치하는지 비교한다.|Cookie=SessionID, abc|
+|RemoteAddr|IP 목록에서 요청의 원격 주소와 비교한다.|RemoteAddr=192.168.3.5/24|
+
+
 
 ---
 
