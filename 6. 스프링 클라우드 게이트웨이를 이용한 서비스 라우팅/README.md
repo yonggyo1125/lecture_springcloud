@@ -404,12 +404,293 @@ public class FilterUtils {
 > gateway-service : src/main/java/.../filters/TrackingFilter.java 
 
 ```java
+package org.choongang.gateway.filters;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+
+@Order(1)
+@Component
+public class TrackingFilter implements GlobalFilter { // 글로벌 필터는 GlobalFilter 인터페이스를 구현하고 filter() 메서드를 재정의해야 한다.
+    private static final Logger logger = LoggerFactory.getLogger(TrackingFilter.class);
+
+    @Autowired
+    private FilterUtils filterUtils;  // 여러 필터에 걸쳐 공통으로 사용되는 함수는 FilterUtils 클래스에 캡슐화된다.
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {  // 요청이 필터를 통과할 때마다 실행되는 코드이다.
+
+        HttpHeaders requestHeaders = exchange.getRequest().getHeaders(); // filter() 메서드의 매개변수로 전달된 ServerWebExchange 객체를 사용하여 요청에서 ServerWebExchange 객체 Http 헤더를 추출한다.
+        if (isCorrelationIdPresent(requestHeaders)) {
+            logger.debug("tmx-correlation-id found in tracking filter: {}", filterUtils.getCorrelationId(requestHeaders));
+        } else {
+            String correlationID = generateCorrelationId();
+            exchange = filterUtils.setCorrelationId(exchange, correlationID);
+            logger.debug("tmx-correlation-id generated in tracking filter: {}", correlationID);
+        }
+
+
+        return chain.filter(exchange);
+    }
+
+    private boolean isCorrelationIdPresent(HttpHeaders requestHeaders) { // 요청 헤더에 상관 ID가 있는지 확인하는 헬퍼 메서드
+        if (filterUtils.getCorrelationId(requestHeaders) != null) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private String generateCorrelationId() { // tmx-correlation-id가 있는지 확인하는 헬퍼 메서드이며, 상관관계 ID를 UUID 값으로 생성한다.
+        return java.util.UUID.randomUUID().toString();
+    }
+}
+```
+
+- 스프링 클라우드 게이트웨이에서 글로벌 필터를 생성하려면 GlobalFilter 클래스를 구현한 후 filter() 메서드를 재정의해야 한다. 이 메서드는 필터에서 구현하는 비즈니스 로직을 포함한다. 이전 코드에서 주목해야 할 중요한 점은 ServerWebExchange 개체에서 HTTP 헤더를 추출하는 방식이다.
+
+```java 
+HttpHeaders requestHeaders = exchange.getRequest().getHeaders();
+```
+
+- 호출이 전달되면, 필터를 통과할 때 전달된 상관관계 ID가 기록된 로그 메시지가 다음과 같이 콘솔에 출력되어야 한다.
+- 
+```yaml
+2024-03-11T22:18:54.548+09:00 DEBUG 9916 --- [gateway-server] [ctor-http-nio-2] o.c.gateway.filters.TrackingFilter       : tmx-correlation-id generated in tracking filter: ba1561f9-9374-4a18-b302-6631cfe2d644
+```
+
+- 콘솔에서 이 메시지가 출력되지 않는다면 게이트웨이 서버의 bootstrap.yml 구성 파일에 코드 8-11처럼 로그를 설정한다. 그런 다음 이 마이크로서비스를 빌드하고 실행하자.
+
+> gateway-server: src/main/resources/bootstrap.yml
+
+```yaml
+logging:
+  level:
+    com.netflix: WARN
+    org.springframework.web: WARN
+    org.choongang: DEBUG
 ```
 
 ---
 
 ## 서비스에서 상관관계 ID 사용
+
+- 이제 게이트웨이를 통과하는 모든 마이크로서비스 호출에 상관관계 ID가 추가되었기 때문에 다음 사항을 확인하고자 한다.
+  - 상관관계 ID는 호출된 마이크로서비스가 쉽게 액세스할 수 있다.
+  - 마이크로서비스로 수행될 모든 하위 서비스 호출에도 상관관계 ID가 전파된다.
+
+- 이를 구현하려고 각 마이크로서비스에서 <code>UserContextFilter</code>, <code>UserContext</code>, <code>UserContext Interceptor</code> 세 가지 클래스 세트를 빌드한다. 이러한 클래스는 유입되는 HTTP 요청의 상관관계 ID(나중에 추가할 다른 정보도 함께)를 읽기 위해 협업하고, 애플리케이션의 비즈니스 로직에서 쉽게 액세스하고 사용할 수 있는 클래스에 ID를 매핑해서 모든 하위 서비스 호출에 전파할 것이다. 그림 8-12는 라이선싱 서비스에서 이러한 다양한 부분을 어떻게 빌드하는지 보여 준다.
+
+![image12](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/12.png)
+> 공통 클래스들을 사용하여 상관관계 ID를 하위 서비스 호출에 전파한다.
+
+- 게이트웨이로 라이선싱 서비스를 호출할 때 TrackingFilter는 게이트웨이로 유입되는 모든 호출에 대해 상관관계 ID를 삽입한다.
+- 사용자가 정의할 수 있는 HTTP ServletFilter인 UserContextFilter 클래스는 상관관계 ID를 UserContext 클래스에 매핑한다. UserContext 클래스는 해당 호출의 나중 부분에서 사용될 것을 대비하여 그 값을 스레드에 저장한다.
+- 회원 서비스의 비즈니스 로직은 게시판 서비스에 대한 호출을 실행한다.
+- RestTemplate은 조직 서비스를 호출한다. RestTemplate은 사용자 정의 스프링 인터셉터 클래스인 UserContextInterceptor를 사용하여 상관관계 ID를 아웃바운드 호출의 HTTP 헤더에 삽입한다.
+
+### 유입되는 HTTP 요청을 가로채는 UserContextFilter
+
+- 첫 번째 작성할 클래스는 <code>UserContextFilter</code>다. 이 클래스는 서비스로 들어오는 모든 HTTP 요청을 가로채고, HTTP 요청에서 사용자 컨텍스트 클래스로 상관관계 ID(와 몇 가지 다른 정보)를 매핑하는 HTTP 서블릿 필터다.
+
+
+
+> member-service: src/main/java/.../utils/UserContextFilter.java
+
+```java
+package org.choongang.member.utils;
+
+import jakarta.servlet.*;
+import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+
+@Component
+public class UserContextFilter implements Filter { // @Component와 jakarta.servlet.Filter 인터페이스 구현으로 스프링에서 선택한 필터를 등록한다.
+
+    private static final Logger logger = LoggerFactory.getLogger(UserContextFilter.class);
+
+    @Override
+    public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException {
+        HttpServletRequest request = (HttpServletRequest) servletRequest;
+
+        // 헤더에 상관관계 ID를 정의하고 UserContext에 값을 설정한다.
+        UserContextHolder.getContext()
+                .setCorrelationId(request.getHeader(UserContext.CORRELATION_ID));
+        UserContextHolder.getContext()
+                .setUserId(request.getHeader(UserContext.USER_ID));
+        UserContextHolder.getContext()
+                .setAuthToken(request.getHeader(UserContext.AUTH_TOKEN));
+        UserContextHolder.getContext()
+                .setOrganizationId(request.getHeader(UserContext.ORGANIZATION_ID));
+
+        logger.debug("UserContextFilter Correlation id: {}", UserContextHolder.getContext().getCorrelationId());
+
+        filterChain.doFilter(request, servletResponse);
+    }
+}
+```
+
+### 서비스에 쉽게 액세스할 수 있는 HTTP 헤더를 만드는 UserContext
+
+- UserContext 클래스는 마이크로서비스가 처리하는 각 서비스 클라이언트 요청의 HTTP 헤더 값을 보관한다. 이 클래스는 java.lang.ThreadLocal에서 값을 조회하고 저장하는 getter/setter 메서드로 구성된다.
+
+> member-service: src/main/java/.../utils/UserContext.java
+
+```java
+package org.choongang.member.utils;
+
+import org.springframework.stereotype.Component;
+
+@Component
+public class UserContext {
+    public static final String CORRELATION_ID = "tmx-correlation-id";
+    public static final String AUTH_TOKEN     = "tmx-auth-token";
+    public static final String USER_ID        = "tmx-user-id";
+    public static final String ORGANIZATION_ID = "tmx-organization-id";
+
+    private String correlationId= new String();
+    private String authToken= new String();
+    private String userId = new String();
+    private String organizationId = new String();
+
+    public String getCorrelationId() { return correlationId;}
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = correlationId;
+    }
+
+    public String getAuthToken() {
+        return authToken;
+    }
+
+    public void setAuthToken(String authToken) {
+        this.authToken = authToken;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
+    public String getOrganizationId() {
+        return organizationId;
+    }
+    public void setOrganizationId(String organizationId) {
+        this.organizationId = organizationId;
+    }
+
+}
+```
+- 여기에서 UserContext 클래스는 유입되는 HTTP 요청에서 가져온 값을 보유하는 POJO에 불과하다.
+
+> member-service: src/main/java/.../utils/UserContextHolder.java
+-  UserContextHolder 클래스로 사용자 요청을 처리하는 해당 스레드에서 호출하는 모든 메서드에 접근 가능한 ThreadLocal 변수에 UserContext를 저장한다.
+
+```java
+package org.choongang.member.utils;
+
+import org.springframework.util.Assert;
+
+public class UserContextHolder {
+    private static final ThreadLocal<UserContext> userContext = new ThreadLocal<UserContext>();
+
+    public static final UserContext getContext(){
+        UserContext context = userContext.get();
+
+        if (context == null) {
+            context = createEmptyContext();
+            userContext.set(context);
+
+        }
+        return userContext.get();
+    }
+
+    public static final void setContext(UserContext context) {
+        Assert.notNull(context, "Only non-null UserContext instances are permitted");
+        userContext.set(context);
+    }
+
+    public static final UserContext createEmptyContext(){
+        return new UserContext();
+    }
+}
+```
+### 상관관계 ID 전파를 위한 사용자 정의 RestTemplate과 UserContextInterceptor 
+
+- 이 클래스는 RestTemplate 인스턴스에서 실행되는 모든 HTTP 기반 서비스 발신 요청에 상관관계 ID를 주입한다. 이 작업은 서비스 호출 간 링크를 설정하는 데 수행된다. 이를 위해 RestTemplate 클래스에 주입된 스프링 인터셉터를 사용할 것이다.
+
+> member-service: src/main/java/.../utils/UserContextInterceptor.java
+
+```java
+package org.choongang.member.utils;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpRequestExecution;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.client.ClientHttpResponse;
+
+import java.io.IOException;
+
+public class UserContextInterceptor implements ClientHttpRequestInterceptor { // ClientHttpRequestInterceptor를 구현한다.
+    @Override  // RestTemplate 에서 실제 HTTP 서비스 호출이 발생하기 전에 intercept()를 호출한다.
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
+        HttpHeaders headers = request.getHeaders();
+        // 발신 서비스를 호출하고자 준비 중인 HTTP 요청 헤더에 UserContext에 저장된 상관관계 ID를 추가한다.
+        headers.add(UserContext.CORRELATION_ID, UserContextHolder.getContext().getCorrelationId());
+        headers.add(UserContext.AUTH_TOKEN, UserContextHolder.getContext().getAuthToken());
+
+        return execution.execute(request, body);
+    }
+}
+```
+
+- UserContextInterceptor를 사용하려면 RestTemplate 빈(bean)을 정의한 후 UserContext Interceptor를 그 빈에 추가해야 한다. 
+
+> member-service: src/main/java/.../config/BeanCojnfig.java
+
+```java
+...
+public class BeanConfig {
+  ...
+
+  @Bean
+  @LoadBalanced  // 이 RestTemplate 객체가 로드 밸런서를 사용한다는 것을 나타낸다.
+  public RestTemplate restTemplate() {
+
+    RestTemplate template = new RestTemplate();
+    List<ClientHttpRequestInterceptor> interceptors = template.getInterceptors();
+    if (interceptors == null) { // RestTemplate 인스턴스에 UserContextInterceptor를 추가한다.
+      template.setInterceptors(Collections.singletonList(new UserContextInterceptor()));
+    } else {
+      interceptors.add(new UserContextInterceptor());
+      template.setInterceptors(interceptors);
+    }
+
+    return template;
+  }
+}
+```
+- 이 빈 정의가 코드에 있다면 @Autowired 애너테이션을 사용하고, RestTemplate을 클래스에 주입할 때마다 코드에서 생성된 RestTemplate(UserContextInterceptor가 설정된)을 사용한다.
+
+> 로그 수집, 인증 등
+> 
+> 이제 각 서비스에 전달된 상관관계 ID가 있기 때문에 호출과 관련된 모든 서비스를 통과하는 트랜잭션을 추적할 수 있다. 이를 위해 각 서비스가 모든 서비스의 로그 항목을 단일 지점으로 캡처하는 중앙 로그 집계 지점에 기록해야 한다. 로그 집계 서비스에 수집된 모든 로그 항목에는 이와 연관된 상관관계 ID가 있다.
+>
+> 로그 집계 솔루션을 구현하는 것은 이 장 범위를 벗어나지만, 곧 다루게될  스프링 클라우드 슬루스(Sleuth) 사용 방법을 살펴볼 것이다. 스프링 클라우드 슬루스는 여기에서 작성한 TrackingFilter를 사용하지 않지만, 상관관계 ID를 추적하고 모든 호출에 삽입되도록 하는 데 동일한 개념을 사용한다.
 
 ---
 
