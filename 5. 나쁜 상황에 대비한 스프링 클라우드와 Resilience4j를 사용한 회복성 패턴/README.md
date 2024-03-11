@@ -651,3 +651,12 @@ public class MemberInfoService implements UserDetailsService {
 
 - 재시도 패턴은 주어진 시간 내 소비할 수 있는 양보다 더 많은 호출로 발생하는 서비스 과부하를 막는다. 이 패턴은 고가용성과 안정성을 위한 API를 준비하는 데 필수 기술이다.
 - Resilience4j는 속도 제한기 패턴을 위해 AtomicRateLimiter와 SemaphoreBasedRateLimiter라는 두 가지 구현체를 제공한다. RateLimiter의 기본 구현체는 AtomicRateLimiter다.
+- 먼저 <code>SemaphoreBasedRateLimiter</code>가 가장 단순하다. SemaphoreBasedRateLimiter는 하나의 java.util.concurrent.Semaphore에 현재 스레드 허용(permission) 수를 저장하도록 구현되었다. 이 경우 모든 사용자 스레드는 semaphore.tryAcquire() 메서드를 호출하고 새로운 limitRefreshPeriod가 시작될 때 semaphore.release()를 실행하여 내부 스레드에 호출을 트리거한다.
+- SemaphoreBasedRate와 달리 <code>AtomicRateLimiter</code>는 사용자 스레드가 직접 모든 허용 로직을 실행하기 때문에 스레드 관리가 필요 없다. AtomicRateLimiter는 시작부터 나노초 단위의 사이클(cycle)로 분할하고 각 사이클 기간이 갱신 기간(단위: 나노초)이다. 그런 다음 매 사이클의 시작 시점에 가용한 허용(active permissions) 수를 설정함으로써 사이클 기간을 제한한다. 이 방식을 더 잘 이해할 수 있도록 다음 설정을 살펴보자.
+  - **ActiveCycle**: 마지막 호출에서 사용된 사이클 번호
+  - **ActivePermissions**: 마지막 호출 후 가용한 허용 수
+  - **NanoToWait**: 마지막 호출 후 허용을 기다릴 나노초 수
+- 이 구현에는 몇 가지 까다로운 로직이 있는데, 더 잘 이해하려면 이 패턴에 대해 다음 Resilience4j 선언을 고려할 수 있다.
+  - 사이클은 동일한 시간 단위다.
+  - 가용한 허용 수가 충분하지 않다면, 현재 허용 수를 줄이고 여유가 생길 때까지 대기할 시간을 계산함으로써 허용을 예약할 수 있다. 이 예약 기능은 Resilience4j에서 일정 기간 동안(limitForPeriod) 허용되는 호출 수를 정의할 수 있어 가능하다. 허용이 갱신되는 빈도 (limitRefreshPeriod)와 스레드가 허용을 얻으려고 대기할 수 있는 시간(timeoutDuration)으로 산출한다.
+  - 이 패턴을 위해서는 타임아웃 시간, 갱신 제한 기간, 기간 동안 제한 수를 지정해야 한다. 다음 코드는 재시도 구성 매개변수가 포함된 라이선싱 서비스의 bootstrap.yml 파일을 보여 준다.
