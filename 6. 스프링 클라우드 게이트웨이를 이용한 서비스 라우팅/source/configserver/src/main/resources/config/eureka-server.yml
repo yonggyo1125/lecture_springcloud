@@ -1,0 +1,13 @@
+server:
+  port: 8070   # 유레카 서버의 수신 포트를 설정한다.
+eureka:
+  instance:
+    hostname: eurekaserver   # 유레카 인스턴스의 호스트 이름을 설정한다.
+  client:
+    registerWithEureka: false   # 컨피그 서버가 유레카 서비스에 등록하지 않도록 지시한다.
+    fetchRegistry: false   # 컨피그 서버가 캐시 레지스트리 정보를 로컬에 캐시하지 않도록 지시한다.
+    serviceUrl:
+      defaultZone:   # 서비스 URL을 제공한다.
+        http://${eureka.instance.hostname}:${server.port}/eureka/
+    server:
+      waitTimeInMsWhenSyncEmpty: 30000   # 서비스가 요청을 받기 전 초기 대기 시간을 설정한다.
