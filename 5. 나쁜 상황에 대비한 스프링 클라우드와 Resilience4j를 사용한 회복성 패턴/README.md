@@ -660,3 +660,44 @@ public class MemberInfoService implements UserDetailsService {
   - 사이클은 동일한 시간 단위다.
   - 가용한 허용 수가 충분하지 않다면, 현재 허용 수를 줄이고 여유가 생길 때까지 대기할 시간을 계산함으로써 허용을 예약할 수 있다. 이 예약 기능은 Resilience4j에서 일정 기간 동안(limitForPeriod) 허용되는 호출 수를 정의할 수 있어 가능하다. 허용이 갱신되는 빈도 (limitRefreshPeriod)와 스레드가 허용을 얻으려고 대기할 수 있는 시간(timeoutDuration)으로 산출한다.
   - 이 패턴을 위해서는 타임아웃 시간, 갱신 제한 기간, 기간 동안 제한 수를 지정해야 한다. 다음 코드는 재시도 구성 매개변수가 포함된 라이선싱 서비스의 bootstrap.yml 파일을 보여 준다.
+
+> member-service: src/main/resources/bootstrap.yml
+
+```yaml
+...
+
+resilience4j.ratelimiter:
+  instances:
+    memberService:
+      timeoutDuration: 1000ms  # 스레드가 허용을 기다리는 시간을 정의한다.
+      limitRefreshPeriod: 5000  # 갱신 제한 기간을 정의한다.
+      limitForPeriod: 5  # 갱신 제한 기간 동안 가용한 허용 수를 정의한다.
+```
+
+- **timeoutDuration**:  스레드가 허용을 기다리는 시간을 정의한다. 이 매개변수의 기본값은 5s(초)다. 
+- **limitRefreshPeriod**: 갱신을 제한할 기간을 설정한다. 각 기간 후 속도 제한기는 권한 수를 limitRefreshPeriod 값으로 재설정한다. limitRefreshPeriod의 기본값은 500ns(나노초)다.
+- **limitForPeriod**:는 한 번의 갱신 기간 동안 가용한 허용 수를 설정한다. 이 기본값은 50이다.
+
+> src/main/java/.../service/MemberInfoService.java
+
+```java
+...
+public class MemberInfoService implements UserDetailsService {
+  
+    ...
+  
+  @Override
+  @RateLimiter(name="memberService", fallbackMethod = "fallbackLoadUserByUserName")  // 속도 제한기 패턴을 위한 인스턴스 이름과 폴백 메서드를 설정한다.
+  @Retry(name="retryMemberService", fallbackMethod = "fallbackLoadUserByUserName")  // 재시도 패턴을 위해 인스턴스 이름과 폴백 메서드를 설정한다.
+  @CircuitBreaker(name="memberService", fallbackMethod = "fallbackLoadUserByUserName")  // Resilience4j 회로 차단기를 사용하여 loadUserByUsername(..) 메서드를 @CircuitBreaker로 래핑한다.
+  @Bulkhead(name="bulkheadMemberService", fallbackMethod = "fallbackLoadUserByUserName") // 벌크헤드 패턴을 위한 인스턴스 이름과 폴백 메서드를 설정한다.
+  public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    ...
+  }
+  
+  ...
+}
+```
+
+- 벌크헤드 패턴과 속도 제한기 패턴의 주요 차이점은 벌크헤드 패턴이 동시 호출 수를 제한하는 역할을 하고(예: 한 번에 X개의 동시 호출만 허용), 속도 제한기는 주어진 시간 프레임 동안 총 호출 수를 제한할 수 있다는 것이다(예: Y초마다 X개의 호출 허용).
+- 자신에게 적합한 패턴을 선택하려면 어떤 것이 필요한지 다시 확인하기 바란다. 동시 횟수를 차단하고 싶다면 벌크헤드가 최선이지만 특정 기간의 총 호출 수를 제한하려면 속도 제한기가 더 낫다. 두 시나리오를 모두 검토하고 있다면 이 둘을 결합할 수도 있다.

@@ -2,6 +2,7 @@ package org.choongang.member.service;
 
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ public class MemberInfoService implements UserDetailsService {
     private final MemberRepository memberRepository;
 
     @Override
+    @RateLimiter(name="memberService", fallbackMethod = "fallbackLoadUserByUserName")  // 속도 제한기 패턴을 위한 인스턴스 이름과 폴백 메서드를 설정한다.
     @Retry(name="retryMemberService", fallbackMethod = "fallbackLoadUserByUserName")  // 재시도 패턴을 위해 인스턴스 이름과 폴백 메서드를 설정한다.
     @CircuitBreaker(name="memberService", fallbackMethod = "fallbackLoadUserByUserName")  // Resilience4j 회로 차단기를 사용하여 loadUserByUsername(..) 메서드를 @CircuitBreaker로 래핑한다.
     @Bulkhead(name="bulkheadMemberService", fallbackMethod = "fallbackLoadUserByUserName") // 벌크헤드 패턴을 위한 인스턴스 이름과 폴백 메서드를 설정한다.

@@ -50,3 +50,11 @@ resilience4j.retry:
       waitDuration: 10000  # 재시도 간 대기 시간
       retry-exceptions:  # 재시도 대상이 되는 예외(exception) 목록
         - java.util.concurrent.TimeoutException
+
+resilience4j.ratelimiter:
+  instances:
+    memberService:
+      timeoutDuration: 1000ms  # 스레드가 허용을 기다리는 시간을 정의한다.
+      limitRefreshPeriod: 5000  # 갱신 제한 기간을 정의한다.
+      limitForPeriod: 5  # 갱신 제한 기간 동안 가용한 허용 수를 정의한다.
+
