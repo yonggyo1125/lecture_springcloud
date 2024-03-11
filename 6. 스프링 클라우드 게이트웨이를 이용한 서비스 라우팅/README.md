@@ -82,7 +82,7 @@ ext {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.cloud:spring-cloud-starter-config'
-	implementation 'org.springframework.cloud:spring-cloud-starter-gateway-mvc'
+	implementation 'org.springframework.cloud:spring-cloud-starter-gateway'
 	implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 	implementation 'org.springframework.cloud:spring-cloud-starter-bootstrap'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -104,12 +104,80 @@ tasks.named('test') {
 > src/main/resources/bootstrap.yml
 
 ```yaml
+spring:
+  application:
+    name: gateway-server  # 스프링 클라우드 컨피그 클라이언트가 조회될 서비스를 알 수 있도록 게이트웨이 서비스의 이름을 지정한다.
+  cloud:
+    config:
+      uri: http://localhost:8071  # 스프링 클라우드 컨피그 서버의 위치를 설정한다.
+```
 
+### 유레카와 통신하는 스프링 클라우드 게이트웨이 구성
+
+- 스프링 클라우드 게이트웨이는 앞서 만든 넷플릭스 유레카 디스커버리 서비스와 통합할 수 있다. 이를 통합하려면 방금 생성한 게이트웨이 서비스를 위한 구성(컨피그) 서버에 유레카 구성 정보를 추가해야 한다.
+- 새로운 게이트웨이 서비스를 추가하는 첫 번째 단계는 스프링 컨피그 서버 저장소(저장소는 볼트, 깃, 파일 시스템 또는 클래스패스가 될 수 있다는 것을 기억하자)에 게이트웨이 서비스를 위한 구성 파일을 생성하는 것이다.
+- 파일 이름은 해당 서비스의 bootstrap.yml 파일에서 정의된 spring.application.name 프로퍼티로 설정된다. 게이트웨이 서비스에서 spring.application.name을 gateway-server로 정의했다면, 구성 파일 이름도 gateway-server로 지정해야 한다. 확장자는 .properties나 .yml 둘 중 하나를 선택할 수 있다.
+
+- 스프링 클라우드 컨피그 서버에 유레카 구성 정보 설정하기
+> 스프링 클라우드 컨피그 서버 : src/main/resources/config/gateway-server.yml
+
+```yaml
+server:
+  port: 8072
+
+eureka:
+  instance:
+    preferIpAddress: true
+  client:
+    registerWithEureka: true
+    fetchRegistry: true
+    serviceUrl:
+      defaultZone: http://localhost:8070/eureka/
+
+management:
+  endpoint:
+    gateway:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include:
+          - "gateway"
 ```
 
 ---
 
 ## 스프링 클라우드 게이트웨이에서 라우팅 구성 
+
+- 스프링 클라우드 게이트웨이는 본래 리버스 프록시다. <code>리버스 프록시(reverse proxy)</code>는 자원에 도달하려는 클라이언트와 자원 사이에 위치한 중개 서버다. 클라이언트는 어떤 서버와 통신하고 있는지도 알지 못한다. 리버스 프록시는 클라이언트 요청을 캡처한 후 클라이언트를 대신하여 원격 자원을 호출한다.
+- 마이크로서비스 아키텍처에서 스프링 클라우드 게이트웨이(리버스 프록시) 클라이언트의 마이크로서비스 호출을 받아 상위(upstream) 서비스에 전달한다. 서비스 클라이언트는 오직 게이트웨이와 통신한다고 생각한다. 하지만 실제로는 그렇게 간단하지 않다. 상위 서비스와 통신하려면 게이트웨이는 유입된 호출이 상위 경로에 매핑하는 방법을 알아야 한다. 스프링 클라우드 게이트웨이에서는 이를 수행할 수 있는 몇 가지 메커니즘을 제공한다.
+  - 서비스 디스커버리를 이용한 자동 경로 매핑
+  - 서비스 디스커버리를 이용한 수동 경로 매핑
+
+### 서비스 디스커버리를 이용한 자동 경로 매핑 
+
+- 게이트웨이에 대한 모든 경로 매핑은 /configserver/src/main/resources/config/gateway-server.yml 파일에서 경로를 정의해서 수행한다. 하지만 스프링 클라우드 게이트웨이는 다음 코드처럼 gateway-server 구성 파일에 구성 정보를 추가해서 서비스 ID를 기반으로 요청을 자동으로 라우팅할 수 있다.
+- gateway-server.yml 파일에 discovery locator 설정하기  
+
+> 스프링 클라우드 컨피그 서버 : src/main/resources/config/gateway-server.yml
+
+```yaml
+...
+
+spring:
+  cloud:
+    gateway:
+      discovery.locator:  # 서비스 디스커버리에 등록된 서비스를 기반으로 게이트웨이가 경로를 생성하도록 설정한다.
+        enabled: true
+        lowerCaseServiceId: true
+```
+
+- 스프링 클라우드 게이트웨이는 호출되는 서비스의 유레카 서비스 ID를 자동으로 사용하여 하위 서비스 인스턴스와 매핑한다.
+- 예) http://localhost:8072/board-service/api/v1/board
+
+![image4](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/4.png)
+
+
 
 ---
 

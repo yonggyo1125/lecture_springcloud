@@ -8,7 +8,6 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 @SpringBootApplication
 @RefreshScope
 @EnableDiscoveryClient  // 유레카 Discovery Client를 활성화한다.
-
 public class MemberServiceApplication {
 
 	public static void main(String[] args) {
