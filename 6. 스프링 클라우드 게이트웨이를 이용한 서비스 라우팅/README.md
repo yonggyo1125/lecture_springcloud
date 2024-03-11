@@ -301,11 +301,111 @@ predicates
 |Cookie|쿠키 이름과 정규식 매개변수를 사용하여 HTTP 요청 헤더에서 쿠키를 찾아 그 값과 정규식이 일치하는지 비교한다.|Cookie=SessionID, abc|
 |RemoteAddr|IP 목록에서 요청의 원격 주소와 비교한다.|RemoteAddr=192.168.3.5/24|
 
+### 게이트웨이 Filter Factories
 
+- 게이트웨이의 Filter Factories를 사용하면 코드에 정책 시행 지점(PEP)을 삽입하여 모든 서비스 호출에 대해 일관된 방식으로 작업을 수행할 수 있다. 즉, 이러한 필터로 수신 및 발신하는 HTTP 요청과 응답을 수정할 수 있다. 다음 표에는 스프링 클라우드 게이트웨이의 모든 필터 목록이 포함되어 있다.
+
+> 스프링 클라우드 게이트웨이의 내장형 필터
+
+|Filter|설명| 예                                        |
+|-----|-------|------------------------------------------|
+|AddRequestHeader|매개변수로 받은 이름과 값을 HTTP 요청 헤더에 추가한다.| AddRequestHeader=X-Board-ID, F39s2       |
+|AddResponseHeader|매개변수로 받은 이름과 값을 HTTP 응답 헤더에 추가한다.| AddResponseHeader=X-Board-ID, F39s2      |
+|AddRequestParameter|매개변수로 받은 이름과 값을 HTTP 쿼리 매개변수로 추가한다.| AddRequestParameter=X-Board-ID, F39s2    |
+|PrefixPath|HTTP 요청 경로에 접두 경로를 추가한다.| PrefixPath=/api                          |
+|RequestRatelimiter|다음 세 개의 매개변수를 받는다.<br>- replenishRate: 사용자에게 초당 허용된 요청 수를 나타낸다.<br>- capacity: 폭증 허용 용량을 정의한다.<br>- keyResolverName: KeyResolver 인터페이스를 구현하는 빈(bean) 이름을 정의한다.| RequestRateLimiter=10, 20, #{@userKeyResolver} |
+|RedirectTo|HTTP 상태 코드와 URL을 받는다. 상태 코드는 300 리다이렉트 HTTP 코드가 되어야 한다.| RedirectTo=302,http://localhost:8072     |
+|RemoveNonProxy|KeepAlive, Proxy-Authenticate 또는 Proxy-Authorization 같은 헤드를 제거한다.| NA                                       |
+|RemoveRequestHeader|HTTP 요청에서 매개변수로 받은 이름과 일치하는 헤더를 제거한다.| RemoveRequestHeader=X-Request-Foo        |
+|RemoveResponseHeader|HTTP 응답에서 매개변수로 받은 헤더 이름과 일치하는 헤더를 제거한다.| RemoveResponseHeader=X-Board-ID          |
+|RewritePath|경로 정규식(regexp) 매개변수와 대체(replacement) 매개변수를 설정한다.| RewritePath=/board/(?<path>.*), /$\{path}|
+|SecureHeaders|응답에 secure header를 추가하고 요청 경로를 수정할 경로 템플릿 매개변수를 받는다.|NA|
+|SetPath|매개변수로 경로 템플릿을 받는다. 경로에 대한 템플릿화된 세그먼트로 요청 경로를 조작한다. 스프링 프레임워크의 URI 템플릿을 사용하며, 복수로 매칭되는 세그먼트가 허용된다.|SetPath=/{board}|
+|SetResponseHeader|HTTP 응답 헤더를 설정하고자 이름과 값을 설정한다.|SetResponseHeader=X-Response-ID, 123|
+
+### 사용자 정의 필터 
+
+- 게이트웨이를 경유하는 모든 요청을 프록시하는 기능을 사용하여 서비스 호출을 단순화할 수 있다. 하지만 스프링 클라우드 게이트웨이의 진정한 강점은 게이트웨이를 통과하는 모든 서비스 호출에 적용될 수 있는 사용자 정의 로직을 작성하려고 할 때 발휘된다. 이 사용자 정의 로직은 대부분 모든 서비스 간에 보안, 로깅 및 추적 등 일관된 애플리케이션 정책을 적용하는 데 사용된다.
+- 스프링 클라우드 게이트웨이 내에서 필터를 사용하여 사용자 정의 로직을 만들 수 있다. 필터를 사용하여 각 서비스 요청이 통과하는 비즈니스 로직 체인을 구현할 수 있다. 스프링 클라우드 게이트웨이는 다음 두 가지 종류의 필터를 지원한다.
+  - **사전 필터(pre-filters)**: 실제 요청이 목적지로 전송되기 전에 사전 필터가 호출된다. 사전 필터는 일반적으로 서비스가 일관된 메시지 형식인지 확인하는 작업(예 주요 HTTP 헤더 존재 여부 확인)을 수행하거나 서비스를 호출하는 사용자가 인증되었는지 확인하는 게이트키퍼 역할을 한다.
+  - **사후 필터(post-filters)**: 사후 필터는 대상 서비스 이후에 호출되고 응답은 클라이언트로 다시 전송된다. 일반적으로 대상 서비스의 응답을 다시 기록하거나 오류를 처리하거나 민감한 정보에 대한 응답을 검사하려고 사후 필터를 구현한다.
+
+![image10](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/10.png)
+> 사전 필터, 대상 라우팅, 사후 필터는 클라이언트 요청이 흘러가는 파이프라인을 형성하고, 요청이 게이트웨이에 유입되면 사용자 지정 필터가 요청을 조작할 수 있다.
+
+- 상기 그림에서 전개된 흐름을 따라가면 항상 서비스 클라이언트(게이트웨이로 노출된 서비스를 호출하는)에서 시작된다는 것을 알 수 있다. 이 과정에는 다음과 같은 단계가 있다.
+  - 게이트웨이에서 정의된 모든 <code>사전 필터</code>는 요청이 게이트웨이에 유입될 때 호출된다. 사전 필터는 **HTTP 요청이 실제 서비스에 도달하기 전에 검사하고 수정**한다. **하지만 사용자를 다른 엔드포인트나 서비스로 리다이렉션할 수는 없다.**
+  - 게이트웨이에 들어오는 요청에 대해 사전 필터가 실행된 후 게이트웨이는 목적지(서비스가 향하는 곳)를 결정한다.
+  - 대상 서비스가 호출된 후 게이트웨이의 <code>사후 필터</code>가 호출된다. 사후 필터는 **호출된 서비스의 응답을 검사하고 수정한다.**
+
+- 게이트웨이 필터를 구현하는 방법을 이해하는 가장 좋은 방법은 실제 동작하는 모습을 보는 것이다. 이를 위해 다음 여러 절에서 사전 및 사후 필터를 만들고, 이 필터들에 클라이언트 요청을 보낼 것이다. 그림은 각 서비스에 대한 요청을 처리하는 데 이들 필터가 어떻게 작용하는지 보여 준다.
+
+![image11](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/11.png)
+> 게이트웨이 필터는 서비스 호출 및 로깅에 대한 중앙 집중식 추적 기능을 제공하는데, 이들 필터를 사용하면 마이크로서비스 호출에 대해 사용자 정의 규칙 및 정책을 시행할 수 있다.
+
+- 상기 그림의 흐름에 따라 다음과 같은 사용자 정의 필터가 사용되는 것을 알 수 있다.
+  - **추적 필터(tracking filter)**: 추적 필터는 게이트웨이로 들어오는 모든 요청과 연관된 상관관계 ID가 있는지 확인하는 사전 필터다. 상관관계 ID는 고객 요청을 수행할 때 실행되는 모든 마이크로서비스에 걸쳐 전달되는 고유 ID다. 상관관계 ID를 사용하면 호출이 일련의 마이크로서비스를 통과할 때 발생하는 이벤트 체인을 추적할 수 있다.
+  - **대상 서비스(target service)**: 대상 서비스는 조직 또는 라이선스 서비스일 수 있다. 두 서비스 모두 HTTP 요청 헤더에서 상관관계 ID를 받는다.
+  - **응답 필터(response filter)**: 응답 필터는 서비스 호출과 연관된 상관관계 ID를 클라이언트에 전송될 HTTP 응답 헤더에 삽입하는 사후 필터다. 이 방식으로 클라이언트도 요청과 연결된 상관관계 ID에 액세스할 수 있다.  
 
 ---
 
 ## 사전 필터 만들기
+
+- 스프링 클라우드 게이트웨이에서 필터를 만드는 것은 간단하다. 시작하려면 먼저 게이트웨이로 유입되는 모든 요청을 검사하고, 요청에서 tmx-correlation-id라는 HTTP 헤더의 포함 여부를 확인하는 TrackingFilter라는 사전 필터를 만든다. tmx-correlation-id 헤더에는 여러 마이크로서비스를 거쳐 사용자 요청을 추적하는 데 사용되는 고유한 GUID(Globally Universal ID)가 포함된다.
+  - tmx-correlation-id가 HTTP 헤더에 없으면 게이트웨이 TrackingFilter가 상관관계 ID를 생성하고 설정한다.
+  - 상관관계 ID가 이미 있다면 게이트웨이는 아무 일도 하지 않는다(상관관계 ID가 있다는 것은 이 특정 서비스 호출이 사용자 요청을 수행하는 서비스 호출 체인의 한 부분임을 의미한다).
+
+> gateway-service : src/main/java/.../filters/FilterUtils.java 
+
+```java
+package org.choongang.gateway.filters;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+
+import java.util.List;
+
+@Component
+public class FilterUtils {
+    public static final String CORRELATION_ID = "tmx-correlation-id";
+    public static final String AUTH_TOKEN     = "tmx-auth-token";
+    public static final String USER_ID        = "tmx-user-id";
+    public static final String ORG_ID         = "tmx-org-id";
+    public static final String PRE_FILTER_TYPE = "pre";
+    public static final String POST_FILTER_TYPE = "post";
+    public static final String ROUTE_FILTER_TYPE = "route";
+
+    public String getCorrelationId(HttpHeaders requestHeaders){
+        if (requestHeaders.get(CORRELATION_ID) !=null) {
+            List<String> header = requestHeaders.get(CORRELATION_ID);
+            return header.stream().findFirst().get();
+        }
+        else{
+            return null;
+        }
+    }
+
+    public ServerWebExchange setRequestHeader(ServerWebExchange exchange, String name, String value) {
+        return exchange.mutate().request(
+                        exchange.getRequest().mutate()
+                                .header(name, value)
+                                .build())
+                .build();
+    }
+
+    public ServerWebExchange setCorrelationId(ServerWebExchange exchange, String correlationId) {
+        return this.setRequestHeader(exchange, CORRELATION_ID, correlationId);
+    }
+}
+```
+
+> gateway-service : src/main/java/.../filters/TrackingFilter.java 
+
+```java
+
+```
 
 ---
 
