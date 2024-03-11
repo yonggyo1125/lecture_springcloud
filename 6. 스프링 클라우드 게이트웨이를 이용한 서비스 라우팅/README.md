@@ -38,6 +38,75 @@
 
 ## 스프링 클라우드 게이트웨이 소개
 
+- 스프링 클라우드 게이트웨이는 스프링 프레임워크 6, 프로젝트 리액터(Project Reactor), 스프링 부트 3.0을 기반으로 한 API 게이트웨이 구현체다. 그렇다면 논블로킹은 무슨 뜻일까? 논블로킹 애플리케이션은 주요 스레드를 차단하지 않는 방식으로 작성된다. 따라서 이러한 스레드는 언제나 요청을 받아 백그라운드에서 비동기식으로 처리하고 처리가 완료되면 응답을 반환한다. 스프링 클라우드 게이트웨이는 다음 기능들을 제공한다.
+  - **애플리케이션의 모든 서비스 경로를 단일 URL에 매핑한다**: 스프링 클라우드 게이트웨이는 하나의 URL에 제한되지 않고 실제로 여러 경로의 진입점을 정의하고 경로 매핑을 세분화할 수 있다(각 서비스 엔드포인트가 고유한 경로로 매핑된다). 하지만 가장 일반적인 사용 사례라면 모든 서비스 클라이언트 호출이 통과하는 단일 진입점을 제공하는 것이다.
+  - **게이트웨이로 유입되는 요청과 응답을 검사하고 조치를 취할 수 있는 필터(filters)를 작성한다**: 이 필터를 사용하면 코드에 정책 시행 지점을 삽입해서 모든 서비스 호출에 다양한 작업을 수행할 수 있다. 즉, 이 필터로 유입되고 유출되는 HTTP 요청 및 응답을 수정할 수 있다. 
+  - **요청을 실행하거나 처리하기 전에 해당 요청이 주어진 조건을 충족하는지 확인할 수 있는 서술자(predicates)를 만든다**: 스프링 클라우드 게이트웨이에는 자체 Route Predicate Factories 세트가 포함되어 있다.
+- 스프링 클라우드 게이트웨이를 시작하기 위해 다음 사항을 준비
+  - 스프링 클라우드 게이트웨이를 위한 스프링 부트 프로젝트를 설정하고 의존성을 적절히 구성한다.
+  - 유레카와 통신할 수 있는 게이트웨이를 구성한다.
+
+### 스프링 부트 게이트웨이 프로젝트 설정
+- 스프링 부트를 사용하여 스프링 클라우드 게이트웨이(Spring Cloud Gateway) 서비스를 설정한다.
+- Spring Initializr(https://start.spring.io/)에서 새로운 프로젝트를 생성해서 시작해 보자.
+
+![image3](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/3.png)
+
+- 다음 추가 의존성을 build.gradle에 추가한다.
+> implementation 'org.springframework.cloud:spring-cloud-starter-bootstrap'
+>
+> build.gradle
+
+```groovy
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.2.0'
+	id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'org.choongang'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	sourceCompatibility = '17'
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('springCloudVersion', "2023.0.0")
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.cloud:spring-cloud-starter-config'
+	implementation 'org.springframework.cloud:spring-cloud-starter-gateway-mvc'
+	implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+	implementation 'org.springframework.cloud:spring-cloud-starter-bootstrap'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+```
+
+- 다음 단계는 스프링 클라우드 컨피그 서버에서 설정을 조회하는 데 필요한 구성 정보를 src/main/resources/bootstrap.yml 파일에 설정하는 것이다.
+
+> src/main/resources/bootstrap.yml
+
+```yaml
+
+```
+
 ---
 
 ## 스프링 클라우드 게이트웨이에서 라우팅 구성 
