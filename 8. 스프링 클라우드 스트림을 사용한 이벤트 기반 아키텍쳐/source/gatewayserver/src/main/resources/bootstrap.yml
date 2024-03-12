@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: gateway-server  # 스프링 클라우드 컨피그 클라이언트가 조회될 서비스를 알 수 있도록 게이트웨이 서비스의 이름을 지정한다.
+  cloud:
+    config:
+      uri: http://localhost:8071  # 스프링 클라우드 컨피그 서버의 위치를 설정한다.
+
+
+logging:
+  level:
+    com.netflix: WARN
+    org.springframework.web: WARN
+    org.choongang: DEBUG

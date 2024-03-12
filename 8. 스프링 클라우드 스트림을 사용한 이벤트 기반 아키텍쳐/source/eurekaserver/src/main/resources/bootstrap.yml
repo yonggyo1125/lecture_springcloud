@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: eureka-server  # 스프링 클라우드 컨피그 클라이언트가 찾고 있는 서비스를 일 수 있도록 유레카 서비스의 이름을 지정한다.
+  cloud:
+    config:
+      uri: http://localhost:8071  # 스프링 클라우드 컨피그 서버의 위치를 지정한다.
+  loadbalancer:   #  여전히 리본이 클라이언트 측 기본 로드 밸런서이므로 loadbalancer.ribbon.enabled를 사용하여 리본을 비활성화한다.
+    ribbon:
+      enabled: false
+
