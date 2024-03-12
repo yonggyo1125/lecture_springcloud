@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: member-service  # 이름을 지정하면 스프링 클라우드 컨피그 클라이언트는 어떤 서비스가 검색되는지 알 수 있다.
+  profiles:
+    active: dev # 서비스가 실행될 프로파일을 지정한다. 프로파일은 환경에 매핑된다.
+  cloud:
+    config:
+      uri: http://localhost:8071 # 스프링 클라우드 컨피그 서버의 위치를 지정한다.
+
+
+resilience4j.circuitbreaker:
+  instances:
+    memberService: # 회원 서비스의 인스턴스 구성(회로 차단기 에너테이션에 전달되는 이름과 동일
+      registerHealthIndicator: true  # 상태 정보 엔드포인트에 대한 구성 정보 노출 여부를 설정한다.
+      ringBufferSizeInClosedState: 5  # 링 버퍼의 닫힌 상태 크기를 설정한다.
+      ringBufferSizeInHalfOpenState: 3  # 링 버퍼의 반 열린 상태의 크기를 설정한다.
+      waitDurationInOpenState: 10s  # 열린 상태의 대기 시간을 설정한다.
+      failureRateThreshold: 50  # 실패율 임계치를 백분율(%)로 설정한다.
+      recordException:  # 실패로 기록될 예외를 설정한다.
+        - org.springframework.web.client.HttpServerErrorException
+        - java.io.IOException
+        - java.util.concurrent.TimeoutException
+        - org.springframework.web.client.ResourceAccessException
+
+    boardService: # 게시판 서비스의 인스턴스 구성(회로 차단기 에너테이션에 전달되는 이름과 동일)
+      registerHealthIndicator: true
+      ringBufferSizeInClosedState: 6
+      ringBufferSizeInHalfOpenState: 4
+      waitDurationInOpenState: 20s
+      failureRateThreshold: 60
+
+resilience4j.bulkhead:
+  instances:
+    bulkheadMemberService:
+      maxWaitDuration: 10ms  # 스레드를 차단할 최대 시간
+      maxConcurrentCalls: 20  # 최대 동시 호출 수
+
+resilience4j.thread-pool-bulkhead:
+  instances:
+    bulkheadMemberService:
+      maxThreadPoolSize: 1  # 스레드 풀에서 최대 스레드 수 
+      coreThreadPoolSize: 1 # 코어 스레드 풀 크기
+      queueCapacity: 1   # 큐 용량 
+      keepAliveDuration: 20ms   # 유휴 스레드가 종료되기 전 새 태스크를 기다리는 최대 시간
+
+resilience4j.retry:
+  instances:
+    retryMemberService:
+      maxRetryAttempts: 5  # 재시도 최대 횟수
+      waitDuration: 10000  # 재시도 간 대기 시간
+      retry-exceptions:  # 재시도 대상이 되는 예외(exception) 목록
+        - java.util.concurrent.TimeoutException
+
+resilience4j.ratelimiter:
+  instances:
+    memberService:
+      timeoutDuration: 1000ms  # 스레드가 허용을 기다리는 시간을 정의한다.
+      limitRefreshPeriod: 5000  # 갱신 제한 기간을 정의한다.
+      limitForPeriod: 5  # 갱신 제한 기간 동안 가용한 허용 수를 정의한다.
+

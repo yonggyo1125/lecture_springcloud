@@ -1,0 +1,38 @@
+server:
+  port: 8072
+
+eureka:
+  instance:
+    preferIpAddress: true
+  client:
+    registerWithEureka: true
+    fetchRegistry: true
+    serviceUrl:
+      defaultZone: http://localhost:8070/eureka/
+
+management:
+  endpoint:
+    gateway:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include:
+          - "gateway"
+
+
+spring:
+  cloud:
+    gateway:
+      #discovery.locator:  # 서비스 디스커버리에 등록된 서비스를 기반으로 게이트웨이가 경로를 생성하도록 설정한다.
+        #enabled: true
+        #lowerCaseServiceId: true
+      routes:
+        - id: board-service  # 이 선택적(optional) ID는 임의의 경로에 대한 ID다.
+          uri: lb://board-service   # 이 경로 대상 URI를 설정한다.
+
+          predicates:  # 경로(path)는 load() 메서드로 설정되지만, 여러 옵션 중 하나다.
+            - Path=/board/**
+
+          filters:  # 응답을 보내기 전이나 후에 요청 또는 응답을 수정하고 스프링 web.filters들을 필터링 한다.
+            - RewritePath=/board/(?<path>.*),/$\{path}  # 매개변수 및 교체 순서(replacement order)로 경로 정규식(path regexp)을 받아 요청 경로를 /board/**에서 /**으로 변경한다.
