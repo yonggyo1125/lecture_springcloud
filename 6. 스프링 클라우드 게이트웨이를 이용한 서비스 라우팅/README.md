@@ -696,3 +696,52 @@ public class BeanConfig {
 
 ## 상관관계 ID를 수신하는 사후 필터 작성 
 
+- 스프링 게이트웨이 서비스 클라이언트를 대신하여 실제 HTTP 호출을 실행하고 대상 서비스 호출의 응답을 다시 검사한다는 것을 기억하라. 그런 다음 응답을 변경하거나 추가 정보를 더할 수 있다. 사전 필터에서 데이터를 캡처하는 것과 연관되었다면 게이트웨이 사후 필터는 지표를 수집하고 사용자의 트랜잭션과 관련된 모든 로깅을 완료하는 데 이상적인 위치다. 마이크로서비스에 전달한 상관관계 ID를 사용자에게 다시 전달해서 이것을 활용하고자 한다. 이러한 방식으로 메시지 본문을 건드리지 않고 상관관계 ID를 호출자에 다시 전달할 수 있다.
+
+> gateway-server: src/main/java/.../filters/ResponseFilter.java
+
+```java
+package org.choongang.gateway.filters;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
+import reactor.core.publisher.Mono;
+
+@Configuration
+public class ResponseFilter {
+    private final Logger logger = LoggerFactory.getLogger(ResponseFilter.class);
+
+    @Autowired
+    private FilterUtils filterUtils;
+
+    @Bean
+    public GlobalFilter postGlobalFilter() {
+        return (exchange, chain) -> {
+            return chain.filter(exchange).then(Mono.fromRunnable(() -> {
+                HttpHeaders requestHeaders = exchange.getRequest().getHeaders();
+                String correlationId = filterUtils.getCorrelationId(requestHeaders);  // 원본 HTTP 요청에 전달된 상관관계 ID를 가진다.
+                logger.debug("Adding the correlation id to the outbound headers. {}", correlationId);
+                exchange.getResponse().getHeaders().add(FilterUtils.CORRELATION_ID, correlationId); // 응답에 상관관계 ID를 삽입한다.
+                // 게이트웨이로 유입된 해당 사용자 요청의 오고 가는 항목을 모두 보여 주는 '북앤드'가 되도록 발신 요청 URI를 로깅한다.
+                logger.debug("Completing outgoing request for {}.", exchange.getRequest().getURI());
+            }));
+        };
+    }
+}
+```
+
+- ResponseFilter가 구현되었다면 서비스를 실행하고 이 기능이 구현된 회원 및 게시판 서비스를 호출할 수 있다. 서비스 호출이 완료되면 그림처럼 호출의 HTTP 응답 헤더에 tmx-correlation-id를 볼 수 있다.
+
+
+![image13](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/13.png)
+> tmx-correlation-id를 응답 헤더에 추가하고 서비스 클라이언트에 되돌려 준다.
+
+- 또한 그림 처럼 콘솔에서 로그 메시지를 볼 수 있다. 전달된 상관관계 ID 984967ee-8f9d-4ac4-aca6-3e1474009316가 사전 및 사후 필터를 통과할 때 기록된다.
+- 
+  ![image14](https://raw.githubusercontent.com/yonggyo1125/lecture_springcloud/master/6.%20%EC%8A%A4%ED%94%84%EB%A7%81%20%ED%81%B4%EB%9D%BC%EC%9A%B0%EB%93%9C%20%EA%B2%8C%EC%9D%B4%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%A5%BC%20%EC%9D%B4%EC%9A%A9%ED%95%9C%20%EC%84%9C%EB%B9%84%EC%8A%A4%20%EB%9D%BC%EC%9A%B0%ED%8C%85/images/14.png)
+> 사전 필터 데이터, 데이터를 처리하는 게시판 서비스, 사후 필터를 보여 주는 Logger 출력
