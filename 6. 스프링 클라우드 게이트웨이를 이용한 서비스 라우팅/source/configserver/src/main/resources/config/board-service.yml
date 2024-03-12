@@ -12,6 +12,22 @@ spring:
     hibernate:
       ddlAuto: create
 
+security:
+  oauth2:
+    client:
+      provider:
+        external:
+          issuerUri: http://localhost:8073/realms/spmia-realm  # 생성된 realm 이름
+
+      registration:
+        external:
+          - provider: external
+          - clientName: choongang
+          - clientId: choongang
+          - clientSecret: JYDIcb8LnAjWsnEL9DerhTdJ1ox4dd0m
+          - scope: openid,offline_access,profile
+          - authorizationGrantType: authorization_code
+
 logging:
   level:
     org:

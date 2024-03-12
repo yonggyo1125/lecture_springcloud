@@ -254,12 +254,61 @@ Password: <CLIENT_APPLICATION_SECRET>
 
 ### 스프링 시큐리티와 키클록 JARs를 서비스에 추가
 - 스프링 마이크로서비스에서 한 것과 마찬가지로 몇 가지 의존성을 게시판 서비스의 그래들 구성 파일인 board-service/build.gradle 파일에 추가해야 한다.
+> implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+> 
+> implementation 'org.springframework.boot:spring-boot-starter-security'
+>
+> board-service: build.gradle
 
 ```groovy
+...
+
+dependencies {
+  
+  ...
+  
+  implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+  implementation 'org.springframework.boot:spring-boot-starter-security'
+  
+  ...
+  
+}
+
+...
 
 ```
 
---- 
+### 키클록 서버 접속을 위한 서비스 구성 
+
+- 조직 서비스를 보호 자원으로 설정하면 호출자는 이 서비스를 호출할 때마다 해당 서비스에 대한 베어러(Bearer) 토큰이 있는 인증 HTTP 헤더를 포함해야 한다. 호출받은 보호 자원은 키클록 서버를 다시 호출해서 토큰이 유효한지 확인해야 한다. 구성 서버 저장소에 있는 게시판 서비스의 애플리케이션 프로퍼티 파일에 이 구성 정보를 추가해야 한다.
+
+> 스프링 클라우드 컨피그 서버 : board-service.yml
+
+```yaml
+
+...
+
+security:
+  oauth2:
+    client:
+      provider:
+        external:
+          issuerUri: http://localhost:8073/realms/spmia-realm  # 생성된 realm 이름
+
+      registration:
+        external:
+          - provider: external
+          - clientName: choongang
+          - clientId: choongang
+          - clientSecret: JYDIcb8LnAjWsnEL9DerhTdJ1ox4dd0m
+          - scope: openid,offline_access,profile
+          - authorizationGrantType: authorization_code
+```
+
+### 서비스에 접근할 수 있는 사용자 및 대상 정의
+
+
+
 
 ## 마이크로서비스 보안을 마치며
 
